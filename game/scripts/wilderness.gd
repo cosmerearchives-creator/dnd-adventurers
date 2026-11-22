@@ -57,6 +57,8 @@ var rng := RandomNumberGenerator.new()
 var druid_frames: Dictionary = {}
 var walk_clock := 0.0
 var druid_state := "idle"
+var walking := false
+var aim_direction := Vector2.RIGHT
 var camera: Camera2D
 var hud: CanvasLayer
 var status_label: Label
@@ -97,7 +99,7 @@ func _ready() -> void:
 func _load_druid_frames() -> void:
     for direction in range(8):
         for animation in ["idle", "walk", "cast", "hit"]:
-            var count := 3 if animation == "walk" else (2 if animation == "cast" else 1)
+            var count := 6 if animation == "walk" else (2 if animation == "cast" else 1)
             for frame in range(count):
                 var path := "res://assets/druid/%s_%d_%d.png" % [animation, direction, frame]
                 if ResourceLoader.exists(path):
@@ -109,7 +111,7 @@ func _draw_druid() -> bool:
     var direction := int(round(fposmod(facing.angle() + PI / 2.0, TAU) / (TAU / 8.0))) % 8
     var frame := 0
     if druid_state == "walk":
-        frame = int(walk_clock * 9.0) % 3
+        frame = int(walk_clock * 11.0) % 6
     elif druid_state == "cast":
         frame = 0 if cast_timer > 0.14 else 1
     var key := "%s_%d_%d" % [druid_state, direction, frame]
@@ -279,9 +281,12 @@ func _process(delta: float) -> void:
     var movement := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
     if touch_vector.length() > 0.08:
         movement = touch_vector
-    if movement.length() > 0.1:
+    walking = movement.length() > 0.1
+    if walking:
         walk_clock += delta
-    druid_state = "hit" if hit_timer > 0.0 else ("cast" if cast_timer > 0.0 else ("walk" if movement.length() > 0.1 else "idle"))
+    else:
+        walk_clock = 0.0
+    druid_state = "hit" if hit_timer > 0.0 else ("walk" if walking else ("cast" if cast_timer > 0.0 else "idle"))
     player_pos += movement.limit_length(1.0) * PLAYER_SPEED * (1.0 + move_bonus) * delta
     if movement.length() > 0.1:
         facing = movement.normalized()
@@ -355,8 +360,8 @@ func _auto_attack() -> void:
     cast_timer = 0.28
     attack_flash = 0.20
     var direction: Vector2 = (enemies[nearest]["pos"] - player_pos).normalized()
-    facing = direction
-    _spawn_bolt(player_pos + direction * 28.0, enemies[nearest], false)
+    aim_direction = direction
+    _spawn_bolt(_casting_origin(direction), enemies[nearest], false)
     if extra_fireball:
         var second := -1
         var second_best := ATTACK_RANGE
@@ -366,7 +371,12 @@ func _auto_attack() -> void:
             if distance < second_best:
                 second = i
                 second_best = distance
-        _spawn_bolt(player_pos + direction * 28.0, enemies[second] if second >= 0 else enemies[nearest], false)
+        _spawn_bolt(_casting_origin(direction), enemies[second] if second >= 0 else enemies[nearest], false)
+
+# Sprite feet sit at player_pos; upper torso is about 45 px above the feet.
+# Launch bolts from the raised casting hand rather than the collision origin.
+func _casting_origin(direction: Vector2) -> Vector2:
+    return player_pos + Vector2(0.0, -45.0) + direction * 24.0
 
 func _spawn_bolt(origin: Vector2, target: Dictionary, is_child: bool) -> void:
     var direction: Vector2 = (target["pos"] - origin).normalized()
@@ -513,12 +523,10 @@ func _draw() -> void:
         draw_circle(player_pos + Vector2(11, -17), 12.0, Color("#865239"))
         draw_circle(player_pos + Vector2(0, -17), 14.0, Color("#b87d51"))
         draw_circle(player_pos + Vector2(0, -14), 10.0, Color("#edc4a5"))
-    var hand := player_pos + facing * (37.0 if cast_timer > 0.0 else 22.0)
-    draw_line(player_pos + facing * 10.0, hand, Color("#6f8b54"), 9.0)
-    draw_circle(hand, 7.0, Color("#f0c6a9"))
     if cast_timer > 0.0:
-        draw_circle(hand + facing * 5.0, 13.0 + 7.0 * sin(elapsed * 30.0), Color("#ffb32b", 0.65))
-        draw_circle(hand + facing * 5.0, 7.0, Color("#fff2a1"))
+        var hand := _casting_origin(aim_direction)
+        draw_circle(hand, 12.0 + 4.0 * sin(elapsed * 30.0), Color("#ffb32b", 0.60))
+        draw_circle(hand, 6.0, Color("#fff2a1"))
     for blast in explosions:
         var progress: float = float(blast["age"]) / float(blast["duration"])
         var radius: float = float(blast["radius"]) * (0.2 + 0.8 * progress)
