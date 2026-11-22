@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y blender
+          sudo apt-get install -y blender libegl1 libgl1 libopengl0 libx11-6
           blender -b -t 2 --python game/tools/render_druid.py
           test "$(find game/assets/druid -name '*.png' | wc -l)" -eq 56
       - name: Export Godot game for Android WebView
