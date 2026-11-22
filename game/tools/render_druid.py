@@ -173,10 +173,10 @@ for side in [-1,1]:
 camera_data=bpy.data.cameras.new('camera')
 camera=bpy.data.objects.new('camera',camera_data)
 bpy.context.collection.objects.link(camera)
-camera.location=(0,-7,4.5)
+camera.location=(0,-7,6.2)
 camera.rotation_euler=(Vector((0,0,1.5))-camera.location).to_track_quat('-Z','Y').to_euler()
 camera_data.type='ORTHO'
-camera_data.ortho_scale=3.7
+camera_data.ortho_scale=3.65
 scene.camera=camera
 light_data=bpy.data.lights.new('softbox','AREA')
 light=bpy.data.objects.new('softbox',light_data)
