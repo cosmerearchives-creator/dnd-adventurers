@@ -54,6 +54,9 @@ var touch_index := -1
 var touch_origin := Vector2.ZERO
 var touch_vector := Vector2.ZERO
 var rng := RandomNumberGenerator.new()
+var druid_frames: Dictionary = {}
+var walk_clock := 0.0
+var druid_state := "idle"
 var camera: Camera2D
 var hud: CanvasLayer
 var status_label: Label
@@ -86,9 +89,36 @@ func _ready() -> void:
     hint_label.add_theme_font_size_override("font_size", 17)
     hint_label.text = "Drag to move. Fire bolts cast automatically."
     hud.add_child(hint_label)
+    _load_druid_frames()
     _create_result_popup()
     _create_level_menu()
     _update_hud()
+
+func _load_druid_frames() -> void:
+    for direction in range(8):
+        for animation in ["idle", "walk", "cast", "hit"]:
+            var count := 3 if animation == "walk" else (2 if animation == "cast" else 1)
+            for frame in range(count):
+                var path := "res://assets/druid/%s_%d_%d.png" % [animation, direction, frame]
+                if ResourceLoader.exists(path):
+                    druid_frames["%s_%d_%d" % [animation, direction, frame]] = load(path)
+
+func _draw_druid() -> bool:
+    if druid_frames.is_empty():
+        return false
+    var direction := int(round(fposmod(facing.angle() + PI / 2.0, TAU) / (TAU / 8.0))) % 8
+    var frame := 0
+    if druid_state == "walk":
+        frame = int(walk_clock * 9.0) % 3
+    elif druid_state == "cast":
+        frame = 0 if cast_timer > 0.14 else 1
+    var key := "%s_%d_%d" % [druid_state, direction, frame]
+    if not druid_frames.has(key):
+        return false
+    var texture: Texture2D = druid_frames[key]
+    var size := Vector2(100, 137)
+    draw_texture_rect(texture, Rect2(player_pos - Vector2(size.x / 2.0, size.y * 0.76), size), false)
+    return true
 
 func _create_result_popup() -> void:
     var overlay := CenterContainer.new()
@@ -218,6 +248,9 @@ func _process(delta: float) -> void:
     var movement := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
     if touch_vector.length() > 0.08:
         movement = touch_vector
+    if movement.length() > 0.1:
+        walk_clock += delta
+    druid_state = "hit" if hit_timer > 0.0 else ("cast" if cast_timer > 0.0 else ("walk" if movement.length() > 0.1 else "idle"))
     player_pos += movement.limit_length(1.0) * PLAYER_SPEED * (1.0 + move_bonus) * delta
     if movement.length() > 0.1:
         facing = movement.normalized()
@@ -439,27 +472,16 @@ func _draw() -> void:
         draw_circle(pos + Vector2(4, 7), 19.0, Color(0.0, 0.0, 0.0, 0.24))
         draw_circle(pos, float(ENEMY_TYPES[kind]["radius"]), color)
         draw_circle(pos + Vector2(0, -5), 4.0, Color("#252922"))
-    # Woodland druid silhouette: layered moss cloak, leather, auburn hair, and antler ornaments.
-    # shoulder ornaments and an extended casting hand. Placeholder 2.5D art.
-    draw_circle(player_pos + Vector2(5, 12), 25.0, Color(0, 0, 0, 0.28))
-    var robe := PackedVector2Array([
-        player_pos + Vector2(-13, -5), player_pos + Vector2(13, -5),
-        player_pos + Vector2(20, 22), player_pos + Vector2(-20, 22)
-    ])
-    draw_colored_polygon(robe, Color("#42583c") if hit_timer <= 0 else Color("#dc6666"))
-    draw_circle(player_pos + Vector2(-13, -13), 12.0, Color("#714b35"))
-    draw_circle(player_pos + Vector2(12, -13), 12.0, Color("#553044"))
-    draw_circle(player_pos + Vector2(0, -10), 16.0, Color("#553044"))
-    draw_circle(player_pos + Vector2(0, -9), 11.0, Color("#f0c6a9"))
-    draw_arc(player_pos + Vector2(0, -9), 13.0, PI, TAU, 16, Color("#a56d45"), 5.0)
-    draw_line(player_pos + Vector2(-9, 5), player_pos + Vector2(9, 5), Color("#b49a6d"), 7.0)
-    # Leaf mantle, leather belt, and branch-like crown add naturalistic detail.
-    draw_line(player_pos + Vector2(-14, 4), player_pos + Vector2(13, 4), Color("#6e4b30"), 5.0)
-    draw_circle(player_pos + Vector2(0, 4), 3.0, Color("#c1a567"))
-    draw_line(player_pos + Vector2(-10, -20), player_pos + Vector2(-18, -31), Color("#8b734c"), 3.0)
-    draw_line(player_pos + Vector2(10, -20), player_pos + Vector2(18, -31), Color("#8b734c"), 3.0)
-    draw_line(player_pos + Vector2(-17, -29), player_pos + Vector2(-23, -33), Color("#8b734c"), 2.0)
-    draw_line(player_pos + Vector2(17, -29), player_pos + Vector2(23, -33), Color("#8b734c"), 2.0)
+    if not _draw_druid():
+        draw_circle(player_pos + Vector2(4, 12), 24.0, Color(0, 0, 0, 0.28))
+        var cloak := PackedVector2Array([player_pos + Vector2(-18, -14), player_pos + Vector2(18, -14), player_pos + Vector2(25, 24), player_pos + Vector2(-25, 24)])
+        draw_colored_polygon(cloak, Color("#344e36"))
+        var tunic := PackedVector2Array([player_pos + Vector2(-15, -13), player_pos + Vector2(15, -13), player_pos + Vector2(9, 4), player_pos + Vector2(20, 18), player_pos + Vector2(-20, 18), player_pos + Vector2(-9, 4)])
+        draw_colored_polygon(tunic, Color("#65814c"))
+        draw_circle(player_pos + Vector2(-11, -17), 12.0, Color("#865239"))
+        draw_circle(player_pos + Vector2(11, -17), 12.0, Color("#865239"))
+        draw_circle(player_pos + Vector2(0, -17), 14.0, Color("#b87d51"))
+        draw_circle(player_pos + Vector2(0, -14), 10.0, Color("#edc4a5"))
     var hand := player_pos + facing * (37.0 if cast_timer > 0.0 else 22.0)
     draw_line(player_pos + facing * 10.0, hand, Color("#6f8b54"), 9.0)
     draw_circle(hand, 7.0, Color("#f0c6a9"))
