@@ -23,13 +23,14 @@ var player_level := 1
 var player_xp := 0
 var xp_needed := 6
 var player_damage := 18.0
-var move_multiplier := 1.0
-var attack_multiplier := 1.0
+var move_bonus := 0.0
+var attack_speed_bonus := 0.0
 var dodge_chance := 0.0
-var bolt_radius := 10.0
+var bolt_size_bonus := 0.0
 var extra_fireball := false
-var split_fireballs := false
-var explosive_fireballs := false
+var split_count := 0
+var explosion_level := 0
+var explosions: Array[Dictionary] = []
 var leveling := false
 var pending_levels := 0
 var level_panel: PanelContainer
@@ -135,13 +136,13 @@ func _create_level_menu() -> void:
 
 func _upgrade_label(id: String) -> String:
     match id:
-        "attack_speed": return "Swift Casting  -  20% faster attacks"
-        "move_speed": return "Forest Stride  -  15% faster movement"
-        "dodge": return "Wild Instinct  -  +8% dodge chance"
-        "multishot": return "Twin Flame  -  cast two fireballs"
-        "split": return "Ember Seeds  -  split on impact"
-        "hitbox": return "Growing Flame  -  +35% fireball size"
-        "explosion": return "Wildfire  -  explosive impact"
+        "attack_speed": return "Swift Casting  +2.5% (max 20%)"
+        "move_speed": return "Forest Stride  +10% (max 100%)"
+        "dodge": return "Wild Instinct  +5% (max 25%)"
+        "multishot": return "Twin Flame  +1 fireball (once)"
+        "split": return "Ember Seeds  +1 random split (max 5)"
+        "hitbox": return "Growing Flame  +5% size (max 35%)"
+        "explosion": return "Wildfire  larger blast radius"
     return id
 
 func _show_level_menu() -> void:
@@ -153,9 +154,17 @@ func _show_level_menu() -> void:
     var pool: Array[String] = []
     for id in UPGRADES:
         if id == "multishot" and extra_fireball: continue
-        if id == "split" and split_fireballs: continue
-        if id == "explosion" and explosive_fireballs: continue
+        if id == "attack_speed" and attack_speed_bonus >= 0.199: continue
+        if id == "move_speed" and move_bonus >= 0.999: continue
+        if id == "dodge" and dodge_chance >= 0.249: continue
+        if id == "split" and split_count >= 5: continue
+        if id == "hitbox" and bolt_size_bonus >= 0.349: continue
         pool.append(id)
+    if pool.is_empty():
+        leveling = false
+        pending_levels = 0
+        level_panel.hide()
+        return
     pool.shuffle()
     for i in range(mini(3, pool.size())):
         var id: String = pool[i]
@@ -169,13 +178,13 @@ func _show_level_menu() -> void:
 
 func _choose_upgrade(id: String) -> void:
     match id:
-        "attack_speed": attack_multiplier *= 1.20
-        "move_speed": move_multiplier *= 1.15
-        "dodge": dodge_chance = minf(0.75, dodge_chance + 0.08)
+        "attack_speed": attack_speed_bonus = minf(0.20, attack_speed_bonus + 0.025)
+        "move_speed": move_bonus = minf(1.0, move_bonus + 0.10)
+        "dodge": dodge_chance = minf(0.25, dodge_chance + 0.05)
         "multishot": extra_fireball = true
-        "split": split_fireballs = true
-        "hitbox": bolt_radius *= 1.35
-        "explosion": explosive_fireballs = true
+        "split": split_count = mini(5, split_count + 1)
+        "hitbox": bolt_size_bonus = minf(0.35, bolt_size_bonus + 0.05)
+        "explosion": explosion_level += 1
     level_panel.hide()
     pending_levels -= 1
     if pending_levels > 0:
@@ -209,7 +218,7 @@ func _process(delta: float) -> void:
     var movement := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
     if touch_vector.length() > 0.08:
         movement = touch_vector
-    player_pos += movement.limit_length(1.0) * PLAYER_SPEED * move_multiplier * delta
+    player_pos += movement.limit_length(1.0) * PLAYER_SPEED * (1.0 + move_bonus) * delta
     if movement.length() > 0.1:
         facing = movement.normalized()
     player_pos = player_pos.clamp(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS)
@@ -226,6 +235,7 @@ func _process(delta: float) -> void:
         spawn_timer = maxf(0.25, 2.0 - elapsed / 420.0)
     _update_enemies(delta)
     _update_firebolts(delta)
+    _update_explosions(delta)
     _auto_attack()
     _collect_pickups()
     _update_hud()
@@ -277,7 +287,7 @@ func _auto_attack() -> void:
             best = distance
     if nearest < 0:
         return
-    attack_timer = ATTACK_COOLDOWN / attack_multiplier
+    attack_timer = ATTACK_COOLDOWN * (1.0 - attack_speed_bonus)
     cast_timer = 0.28
     attack_flash = 0.20
     var direction: Vector2 = (enemies[nearest]["pos"] - player_pos).normalized()
@@ -296,10 +306,16 @@ func _auto_attack() -> void:
 
 func _spawn_bolt(origin: Vector2, target: Dictionary, is_child: bool) -> void:
     var direction: Vector2 = (target["pos"] - origin).normalized()
-    firebolts.append({"pos": origin, "target": target, "direction": direction, "life": 1.5, "child": is_child})
+    firebolts.append({"pos": origin, "target": target, "direction": direction, "life": 1.5, "child": is_child, "random": false})
+
+func _spawn_split_bolt(origin: Vector2) -> void:
+    var angle := rng.randf_range(0.0, TAU)
+    var direction := Vector2.RIGHT.rotated(angle)
+    firebolts.append({"pos": origin, "target": {}, "direction": direction, "life": 0.85, "child": true, "random": true})
 
 func _damage_enemy(target: Dictionary, damage: float) -> void:
-    if not enemies.has(target): return
+    if not enemies.has(target):
+        return
     target["hp"] = float(target["hp"]) - damage
     if float(target["hp"]) <= 0.0:
         pickups.append(target["pos"])
@@ -307,35 +323,55 @@ func _damage_enemy(target: Dictionary, damage: float) -> void:
 
 func _impact_bolt(bolt: Dictionary, target: Dictionary) -> void:
     var point: Vector2 = bolt["pos"]
-    var candidates: Array[Dictionary] = []
-    for enemy in enemies:
-        if enemy != target and point.distance_to(enemy["pos"]) < 270.0:
-            candidates.append(enemy)
     _damage_enemy(target, player_damage * (0.65 if bolt["child"] else 1.0))
-    if explosive_fireballs:
+    if explosion_level > 0:
+        var radius := 65.0 + 25.0 * float(explosion_level)
+        explosions.append({"pos": point, "radius": radius, "age": 0.0, "duration": 0.38})
         for enemy in enemies.duplicate():
-            if point.distance_to(enemy["pos"]) <= 90.0 + bolt_radius:
+            if point.distance_to(enemy["pos"]) <= radius:
                 _damage_enemy(enemy, player_damage * 0.65)
-    if split_fireballs and not bolt["child"]:
-        candidates.shuffle()
-        for i in range(mini(2, candidates.size())):
-            if enemies.has(candidates[i]):
-                _spawn_bolt(point, candidates[i], true)
+    # Every primary bolt produces its splits, even if there are no other targets.
+    # Split children fly straight in random directions and do not recursively split.
+    if split_count > 0 and not bolt["child"]:
+        for i in range(split_count):
+            _spawn_split_bolt(point)
 
 func _update_firebolts(delta: float) -> void:
     for i in range(firebolts.size() - 1, -1, -1):
         var bolt: Dictionary = firebolts[i]
         bolt["life"] = float(bolt["life"]) - delta
-        var target: Dictionary = bolt["target"]
-        if not enemies.has(target) or float(bolt["life"]) <= 0.0:
+        if float(bolt["life"]) <= 0.0:
             firebolts.remove_at(i)
             continue
-        var direction: Vector2 = (target["pos"] - bolt["pos"]).normalized()
-        bolt["direction"] = direction
-        bolt["pos"] += direction * FIREBOLT_SPEED * delta
-        if (bolt["pos"] as Vector2).distance_to(target["pos"]) < 15.0 + bolt_radius:
-            _impact_bolt(bolt, target)
+        var direction: Vector2 = bolt["direction"]
+        if not bolt["random"]:
+            var target: Dictionary = bolt["target"]
+            if not enemies.has(target):
+                firebolts.remove_at(i)
+                continue
+            direction = (target["pos"] - bolt["pos"]).normalized()
+            bolt["direction"] = direction
+        var previous: Vector2 = bolt["pos"]
+        bolt["pos"] = previous + direction * FIREBOLT_SPEED * delta
+        var hit_radius := 10.0 * (1.0 + bolt_size_bonus)
+        var hit: Dictionary = {}
+        for enemy in enemies:
+            var enemy_radius: float = float(ENEMY_TYPES[enemy["kind"]]["radius"])
+            var center: Vector2 = enemy["pos"]
+            var segment: Vector2 = bolt["pos"] - previous
+            var t := clampf((center - previous).dot(segment) / maxf(segment.length_squared(), 0.001), 0.0, 1.0)
+            if center.distance_to(previous + segment * t) <= hit_radius + enemy_radius:
+                hit = enemy
+                break
+        if not hit.is_empty():
+            _impact_bolt(bolt, hit)
             firebolts.remove_at(i)
+
+func _update_explosions(delta: float) -> void:
+    for i in range(explosions.size() - 1, -1, -1):
+        explosions[i]["age"] = float(explosions[i]["age"]) + delta
+        if float(explosions[i]["age"]) >= float(explosions[i]["duration"]):
+            explosions.remove_at(i)
 
 func _collect_pickups() -> void:
     for i in range(pickups.size() - 1, -1, -1):
@@ -430,7 +466,15 @@ func _draw() -> void:
     if cast_timer > 0.0:
         draw_circle(hand + facing * 5.0, 13.0 + 7.0 * sin(elapsed * 30.0), Color("#ffb32b", 0.65))
         draw_circle(hand + facing * 5.0, 7.0, Color("#fff2a1"))
+    for blast in explosions:
+        var progress: float = float(blast["age"]) / float(blast["duration"])
+        var radius: float = float(blast["radius"]) * (0.2 + 0.8 * progress)
+        var alpha := 1.0 - progress
+        draw_circle(blast["pos"], radius, Color(1.0, 0.27, 0.05, alpha * 0.28))
+        draw_arc(blast["pos"], radius, 0.0, TAU, 40, Color(1.0, 0.76, 0.2, alpha), 10.0)
+        draw_circle(blast["pos"], radius * 0.45, Color(1.0, 0.85, 0.28, alpha * 0.32))
     for bolt in firebolts:
+        var bolt_radius := 10.0 * (1.0 + bolt_size_bonus)
         var p: Vector2 = bolt["pos"]
         var d: Vector2 = bolt["direction"]
         draw_line(p - d * 34.0, p, Color("#ff5722", 0.45), bolt_radius * 1.6)

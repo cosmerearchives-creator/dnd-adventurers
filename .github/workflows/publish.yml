@@ -65,22 +65,22 @@ jobs:
           mkdir -p release-assets
           cp app/build/outputs/apk/release/app-release.apk release-assets/dnd-adventurers.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose release-assets/dnd-adventurers.apk
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-assets/dnd-adventurers.apk | grep "versionCode='5'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-assets/dnd-adventurers.apk | grep "versionCode='6'"
           sha256sum release-assets/dnd-adventurers.apk
           python3 - <<'PY'
           import hashlib,json,pathlib
           apk=pathlib.Path('release-assets/dnd-adventurers.apk')
-          pathlib.Path('release-assets/update.json').write_text(json.dumps({'versionCode':5,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest()}))
+          pathlib.Path('release-assets/update.json').write_text(json.dumps({'versionCode':6,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest()}))
           PY
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v0.2.3 >/dev/null 2>&1; then
-            gh release upload v0.2.3 release-assets/dnd-adventurers.apk release-assets/update.json --clobber
+          if gh release view v0.2.4 >/dev/null 2>&1; then
+            gh release upload v0.2.4 release-assets/dnd-adventurers.apk release-assets/update.json --clobber
           else
-            gh release create v0.2.3 release-assets/dnd-adventurers.apk release-assets/update.json --title "DnD Adventurers 0.2.3" --notes "Wilderness druid visual update and touchscreen choose-one-of-three level-up upgrades: speed, movement, dodge, multishot, splitting, fireball size, explosion."
+            gh release create v0.2.4 release-assets/dnd-adventurers.apk release-assets/update.json --title "DnD Adventurers 0.2.4" --notes "Rebalanced capped druid upgrades, random non-homing split fireballs, larger fireballs, and visible growing wildfire explosions."
           fi
       - name: Verify updater download URLs
         run: |
@@ -92,6 +92,6 @@ jobs:
           python3 - <<'PY'
           import hashlib,json,pathlib
           meta=json.loads(pathlib.Path('/tmp/update.json').read_text())
-          assert meta['versionCode']==5
+          assert meta['versionCode']==6
           assert hashlib.sha256(pathlib.Path('/tmp/dnd-adventurers.apk').read_bytes()).hexdigest()==meta['sha256']
           PY
