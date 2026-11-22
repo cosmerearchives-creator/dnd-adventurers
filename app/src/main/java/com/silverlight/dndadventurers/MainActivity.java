@@ -7,15 +7,17 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Button;
-import android.widget.ImageView;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.core.content.FileProvider;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
+import androidx.webkit.WebViewAssetLoader;
 
 import java.io.File;
 import java.util.concurrent.ExecutorService;
@@ -26,6 +28,7 @@ public final class MainActivity extends Activity {
     private TextView status;
     private Button checkButton;
     private File pendingUpdate;
+    private WebView game;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +39,9 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (game != null) {
+            game.destroy();
+        }
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -47,10 +53,7 @@ public final class MainActivity extends Activity {
             try {
                 File update = GitHubUpdates.downloadIfNewer(this);
                 runOnUiThread(() -> {
-                    if (isDestroyed() || isFinishing()) {
-                        return;
-                    }
-
+                    if (isDestroyed() || isFinishing()) return;
                     pendingUpdate = update;
                     checkButton.setEnabled(true);
                     checkButton.setText(update == null ? R.string.check_for_update : R.string.install_update);
@@ -73,7 +76,6 @@ public final class MainActivity extends Activity {
             checkForUpdate();
             return;
         }
-
         Intent install = new Intent(Intent.ACTION_VIEW);
         install.setDataAndType(FileProvider.getUriForFile(this,
                 getPackageName() + ".updates", pendingUpdate), "application/vnd.android.package-archive");
@@ -90,38 +92,65 @@ public final class MainActivity extends Activity {
         home.setOrientation(LinearLayout.VERTICAL);
         home.setGravity(Gravity.CENTER);
         home.setBackgroundColor(Color.rgb(33, 24, 43));
-        home.setPadding(dp(24), dp(24), dp(24), dp(24));
-        ViewCompat.setOnApplyWindowInsetsListener(home, (view, insets) -> {
-            Insets safeArea = insets.getInsets(WindowInsetsCompat.Type.systemBars()
-                    | WindowInsetsCompat.Type.displayCutout());
-            view.setPadding(dp(24) + safeArea.left, dp(24) + safeArea.top,
-                    dp(24) + safeArea.right, dp(24) + safeArea.bottom);
-            return insets;
-        });
+        home.setPadding(dp(20), dp(20), dp(20), dp(20));
 
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(R.drawable.adventurers_icon);
-        home.addView(icon, new LinearLayout.LayoutParams(dp(88), dp(88)));
-
-        TextView title = createText(32, Color.rgb(251, 238, 213));
-        title.setText(R.string.app_name);
+        TextView title = createText(30, Color.rgb(251, 238, 213));
+        title.setText("DnD Adventurers");
         home.addView(title);
 
         TextView version = createText(16, Color.rgb(218, 201, 222));
         version.setText(getString(R.string.installed_version, BuildConfig.VERSION_NAME));
         home.addView(version);
 
+        Button play = new Button(this);
+        play.setText("PLAY WILDERNESS");
+        play.setOnClickListener(view -> launchGame());
+        LinearLayout.LayoutParams playLayout = new LinearLayout.LayoutParams(-2, -2);
+        playLayout.topMargin = dp(24);
+        home.addView(play, playLayout);
+
         checkButton = new Button(this);
         checkButton.setText(R.string.check_for_update);
         checkButton.setOnClickListener(view -> handleUpdateButton());
-        LinearLayout.LayoutParams buttonLayout = new LinearLayout.LayoutParams(-2, -2);
-        buttonLayout.topMargin = dp(24);
-        home.addView(checkButton, buttonLayout);
+        home.addView(checkButton);
 
         status = createText(14, Color.rgb(218, 201, 222));
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         home.addView(status);
         return home;
+    }
+
+    private void launchGame() {
+        FrameLayout container = new FrameLayout(this);
+        game = new WebView(this);
+        WebSettings settings = game.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        game.setWebChromeClient(new WebChromeClient());
+        WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
+        game.setWebViewClient(new WebViewClient() {
+            @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(
+                    WebView view, android.webkit.WebResourceRequest request) {
+                return loader.shouldInterceptRequest(request.getUrl());
+            }
+        });
+        container.addView(game, new FrameLayout.LayoutParams(-1, -1));
+        Button back = new Button(this);
+        back.setText("MENU");
+        FrameLayout.LayoutParams backParams = new FrameLayout.LayoutParams(dp(94), dp(48), Gravity.TOP | Gravity.RIGHT);
+        container.addView(back, backParams);
+        back.setOnClickListener(view -> {
+            game.destroy();
+            game = null;
+            setContentView(createHomeScreen());
+            checkForUpdate();
+        });
+        setContentView(container);
+        game.loadUrl("https://appassets.androidplatform.net/assets/game/index.html");
     }
 
     private TextView createText(int size, int color) {
