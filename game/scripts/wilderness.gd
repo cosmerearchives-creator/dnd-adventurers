@@ -5,7 +5,8 @@ extends Node2D
 
 const WORLD_RADIUS := 2200.0
 const PLAYER_SPEED := 245.0
-const ATTACK_RANGE := 118.0
+const ATTACK_RANGE := 370.0
+const FIREBOLT_SPEED := 680.0
 const ATTACK_COOLDOWN := 0.55
 const TOUCH_RADIUS := 105.0
 const MAX_ENEMIES := 85
@@ -24,6 +25,9 @@ var xp_needed := 6
 var player_damage := 18.0
 var enemies: Array[Dictionary] = []
 var pickups: Array[Vector2] = []
+var firebolts: Array[Dictionary] = []
+var facing := Vector2.RIGHT
+var cast_timer := 0.0
 var trees: Array[Vector2] = []
 var stones: Array[Vector2] = []
 var elapsed := 0.0
@@ -67,7 +71,7 @@ func _ready() -> void:
     hint_label = Label.new()
     hint_label.position = Vector2(22, 64)
     hint_label.add_theme_font_size_override("font_size", 17)
-    hint_label.text = "Drag the left side to move. Attacks are automatic."
+    hint_label.text = "Drag to move. Fire bolts cast automatically."
     hud.add_child(hint_label)
     _create_result_popup()
     _update_hud()
@@ -122,11 +126,14 @@ func _process(delta: float) -> void:
     if touch_vector.length() > 0.08:
         movement = touch_vector
     player_pos += movement.limit_length(1.0) * PLAYER_SPEED * delta
+    if movement.length() > 0.1:
+        facing = movement.normalized()
     player_pos = player_pos.clamp(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS)
     camera.position = player_pos
     attack_timer -= delta
     hit_timer -= delta
     attack_flash = maxf(0.0, attack_flash - delta)
+    cast_timer = maxf(0.0, cast_timer - delta)
     spawn_timer -= delta
     if spawn_timer <= 0.0 and enemies.size() < MAX_ENEMIES:
         var wave := int(elapsed / 60.0) + 1
@@ -134,6 +141,7 @@ func _process(delta: float) -> void:
             _spawn_enemy(wave)
         spawn_timer = maxf(0.25, 2.0 - elapsed / 420.0)
     _update_enemies(delta)
+    _update_firebolts(delta)
     _auto_attack()
     _collect_pickups()
     _update_hud()
@@ -183,11 +191,29 @@ func _auto_attack() -> void:
     if nearest < 0:
         return
     attack_timer = ATTACK_COOLDOWN
-    attack_flash = 0.16
-    enemies[nearest]["hp"] = float(enemies[nearest]["hp"]) - player_damage
-    if float(enemies[nearest]["hp"]) <= 0.0:
-        pickups.append(enemies[nearest]["pos"])
-        enemies.remove_at(nearest)
+    cast_timer = 0.28
+    attack_flash = 0.20
+    var direction: Vector2 = (enemies[nearest]["pos"] - player_pos).normalized()
+    facing = direction
+    firebolts.append({"pos": player_pos + direction * 28.0, "target": enemies[nearest], "direction": direction, "life": 1.5})
+
+func _update_firebolts(delta: float) -> void:
+    for i in range(firebolts.size() - 1, -1, -1):
+        var bolt: Dictionary = firebolts[i]
+        bolt["life"] = float(bolt["life"]) - delta
+        var target: Dictionary = bolt["target"]
+        if not enemies.has(target) or float(bolt["life"]) <= 0.0:
+            firebolts.remove_at(i)
+            continue
+        var direction: Vector2 = (target["pos"] - bolt["pos"]).normalized()
+        bolt["direction"] = direction
+        bolt["pos"] += direction * FIREBOLT_SPEED * delta
+        if (bolt["pos"] as Vector2).distance_to(target["pos"]) < 25.0:
+            target["hp"] = float(target["hp"]) - player_damage
+            if float(target["hp"]) <= 0.0:
+                pickups.append(target["pos"])
+                enemies.erase(target)
+            firebolts.remove_at(i)
 
 func _collect_pickups() -> void:
     for i in range(pickups.size() - 1, -1, -1):
@@ -255,11 +281,33 @@ func _draw() -> void:
         draw_circle(pos + Vector2(4, 7), 19.0, Color(0.0, 0.0, 0.0, 0.24))
         draw_circle(pos, float(ENEMY_TYPES[kind]["radius"]), color)
         draw_circle(pos + Vector2(0, -5), 4.0, Color("#252922"))
-    draw_circle(player_pos + Vector2(4, 9), 21.0, Color(0, 0, 0, 0.3))
-    draw_circle(player_pos, 19.0, Color("#376bba") if hit_timer <= 0 else Color("#e65d52"))
-    draw_circle(player_pos + Vector2(0, -7), 7.0, Color("#f0cfac"))
-    if attack_flash > 0.0:
-        draw_arc(player_pos, ATTACK_RANGE, 0, TAU, 60, Color("#f5e6aa", 0.5), 4.0)
+    # Stylized female spellcaster silhouette: flowing hair, fitted tunic, cloak,
+    # shoulder ornaments and an extended casting hand. Placeholder 2.5D art.
+    draw_circle(player_pos + Vector2(5, 12), 25.0, Color(0, 0, 0, 0.28))
+    var robe := PackedVector2Array([
+        player_pos + Vector2(-13, -5), player_pos + Vector2(13, -5),
+        player_pos + Vector2(20, 22), player_pos + Vector2(-20, 22)
+    ])
+    draw_colored_polygon(robe, Color("#693d83") if hit_timer <= 0 else Color("#dc6666"))
+    draw_circle(player_pos + Vector2(-13, -13), 12.0, Color("#553044"))
+    draw_circle(player_pos + Vector2(12, -13), 12.0, Color("#553044"))
+    draw_circle(player_pos + Vector2(0, -10), 16.0, Color("#553044"))
+    draw_circle(player_pos + Vector2(0, -9), 11.0, Color("#f0c6a9"))
+    draw_arc(player_pos + Vector2(0, -9), 13.0, PI, TAU, 16, Color("#7d4937"), 5.0)
+    draw_line(player_pos + Vector2(-9, 5), player_pos + Vector2(9, 5), Color("#c29ccf"), 7.0)
+    var hand := player_pos + facing * (37.0 if cast_timer > 0.0 else 22.0)
+    draw_line(player_pos + facing * 10.0, hand, Color("#d3a6dc"), 9.0)
+    draw_circle(hand, 7.0, Color("#f0c6a9"))
+    if cast_timer > 0.0:
+        draw_circle(hand + facing * 5.0, 13.0 + 7.0 * sin(elapsed * 30.0), Color("#ffb32b", 0.65))
+        draw_circle(hand + facing * 5.0, 7.0, Color("#fff2a1"))
+    for bolt in firebolts:
+        var p: Vector2 = bolt["pos"]
+        var d: Vector2 = bolt["direction"]
+        draw_line(p - d * 34.0, p, Color("#ff5722", 0.45), 16.0)
+        draw_line(p - d * 19.0, p, Color("#ffb331", 0.85), 9.0)
+        draw_circle(p, 10.0, Color("#ff7a19"))
+        draw_circle(p, 5.0, Color("#fff3a4"))
     if touch_index >= 0:
         var base := touch_origin + camera.get_screen_center_position() - get_viewport_rect().size / 2.0
         draw_circle(base, TOUCH_RADIUS, Color(1, 1, 1, 0.15))
