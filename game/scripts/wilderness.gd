@@ -143,24 +143,51 @@ func _create_result_popup() -> void:
     content.add_child(restart)
     result_panel.hide()
 
+func _menu_style(fill: Color, outline: Color, thickness: int) -> StyleBoxFlat:
+    var style := StyleBoxFlat.new()
+    style.bg_color = fill
+    style.border_color = outline
+    style.set_border_width_all(thickness)
+    style.set_corner_radius_all(18)
+    style.content_margin_left = 14
+    style.content_margin_right = 14
+    style.content_margin_top = 14
+    style.content_margin_bottom = 14
+    return style
+
+func _upgrade_color(id: String) -> Color:
+    match id:
+        "attack_speed": return Color("#d67af1")
+        "move_speed": return Color("#83df55")
+        "dodge": return Color("#77d5ef")
+        "multishot": return Color("#ffb359")
+        "split": return Color("#f2d05c")
+        "hitbox": return Color("#77b9f2")
+        "explosion": return Color("#ff7859")
+    return Color("#e9b970")
+
 func _create_level_menu() -> void:
     var overlay := CenterContainer.new()
     overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
     hud.add_child(overlay)
     level_panel = PanelContainer.new()
-    level_panel.custom_minimum_size = Vector2(590, 530)
+    level_panel.custom_minimum_size = Vector2(610, 690)
+    level_panel.add_theme_stylebox_override("panel", _menu_style(Color("#2a2328"), Color("#e9b970"), 4))
     overlay.add_child(level_panel)
     var layout := VBoxContainer.new()
-    layout.add_theme_constant_override("separation", 18)
+    layout.add_theme_constant_override("separation", 16)
     level_panel.add_child(layout)
-    var heading := Label.new()
-    heading.text = "LEVEL UP!  CHOOSE ONE"
-    heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    heading.add_theme_font_size_override("font_size", 30)
-    layout.add_child(heading)
+    for text_value in ["✦  ✧  ✦", "LEVEL UP!", "Choose 1 Upgrade"]:
+        var label := Label.new()
+        label.text = text_value
+        label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+        label.add_theme_color_override("font_color", Color("#f8d39a"))
+        label.add_theme_font_size_override("font_size", 48 if text_value == "LEVEL UP!" else 26)
+        layout.add_child(label)
+    layout.add_child(HSeparator.new())
     upgrade_list = VBoxContainer.new()
-    upgrade_list.add_theme_constant_override("separation", 14)
+    upgrade_list.add_theme_constant_override("separation", 17)
     layout.add_child(upgrade_list)
     level_panel.hide()
 
@@ -199,9 +226,13 @@ func _show_level_menu() -> void:
     for i in range(mini(3, pool.size())):
         var id: String = pool[i]
         var choice := Button.new()
-        choice.text = _upgrade_label(id)
-        choice.custom_minimum_size = Vector2(550, 108)
-        choice.add_theme_font_size_override("font_size", 23)
+        choice.text = _upgrade_label(id).replace("  ", "\n")
+        choice.custom_minimum_size = Vector2(550, 135)
+        choice.add_theme_font_size_override("font_size", 24)
+        choice.add_theme_color_override("font_color", Color("#fff1dc"))
+        choice.add_theme_stylebox_override("normal", _menu_style(Color("#322c2c"), _upgrade_color(id), 4))
+        choice.add_theme_stylebox_override("hover", _menu_style(Color("#4b3734"), _upgrade_color(id), 5))
+        choice.add_theme_stylebox_override("pressed", _menu_style(Color("#59453d"), _upgrade_color(id), 5))
         choice.pressed.connect(_choose_upgrade.bind(id))
         upgrade_list.add_child(choice)
     level_panel.show()
