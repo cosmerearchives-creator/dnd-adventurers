@@ -99,7 +99,7 @@ func _ready() -> void:
 func _load_druid_frames() -> void:
     for direction in range(8):
         for animation in ["idle", "walk", "cast", "hit"]:
-            var count := 6 if animation == "walk" else (2 if animation == "cast" else 1)
+            var count := 8 if animation == "walk" else (2 if animation == "cast" else 1)
             for frame in range(count):
                 var path := "res://assets/druid/%s_%d_%d.png" % [animation, direction, frame]
                 if ResourceLoader.exists(path):
@@ -111,7 +111,7 @@ func _draw_druid() -> bool:
     var direction := int(round(fposmod(facing.angle() + PI / 2.0, TAU) / (TAU / 8.0))) % 8
     var frame := 0
     if druid_state == "walk":
-        frame = int(walk_clock * 11.0) % 6
+        frame = int(walk_clock * 12.0) % 8
     elif druid_state == "cast":
         frame = 0 if cast_timer > 0.14 else 1
     var key := "%s_%d_%d" % [druid_state, direction, frame]
