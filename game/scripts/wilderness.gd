@@ -41,6 +41,8 @@ var camera: Camera2D
 var hud: CanvasLayer
 var status_label: Label
 var hint_label: Label
+var result_panel: PanelContainer
+var result_title: Label
 
 func _ready() -> void:
     rng.seed = 20261122
@@ -65,9 +67,32 @@ func _ready() -> void:
     hint_label = Label.new()
     hint_label.position = Vector2(22, 64)
     hint_label.add_theme_font_size_override("font_size", 17)
-    hint_label.text = "Move: WASD / arrows / touch joystick   |   Attacks automatically"
+    hint_label.text = "Drag the left side to move. Attacks are automatic."
     hud.add_child(hint_label)
+    _create_result_popup()
     _update_hud()
+
+func _create_result_popup() -> void:
+    var overlay := CenterContainer.new()
+    overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    hud.add_child(overlay)
+    result_panel = PanelContainer.new()
+    result_panel.custom_minimum_size = Vector2(520, 300)
+    overlay.add_child(result_panel)
+    var content := VBoxContainer.new()
+    content.add_theme_constant_override("separation", 22)
+    result_panel.add_child(content)
+    result_title = Label.new()
+    result_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    result_title.add_theme_font_size_override("font_size", 38)
+    content.add_child(result_title)
+    var restart := Button.new()
+    restart.text = "RESTART ADVENTURE"
+    restart.custom_minimum_size = Vector2(470, 96)
+    restart.add_theme_font_size_override("font_size", 28)
+    restart.pressed.connect(func() -> void: get_tree().reload_current_scene())
+    content.add_child(restart)
+    result_panel.hide()
 
 func _input(event: InputEvent) -> void:
     if event is InputEventScreenTouch:
@@ -78,12 +103,8 @@ func _input(event: InputEvent) -> void:
         elif not event.pressed and event.index == touch_index:
             touch_index = -1
             touch_vector = Vector2.ZERO
-        elif event.pressed and game_over:
-            get_tree().reload_current_scene()
     elif event is InputEventScreenDrag and event.index == touch_index:
         touch_vector = (event.position - touch_origin).limit_length(TOUCH_RADIUS) / TOUCH_RADIUS
-    elif event is InputEventKey and event.pressed and game_over and event.keycode == KEY_R:
-        get_tree().reload_current_scene()
 
 func _process(delta: float) -> void:
     if game_over:
@@ -93,6 +114,7 @@ func _process(delta: float) -> void:
     if elapsed >= 600.0:
         game_over = true
         victory = true
+        _show_result()
         _update_hud()
         return
     var movement := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
@@ -145,6 +167,7 @@ func _update_enemies(delta: float) -> void:
             if player_hp <= 0.0:
                 player_hp = 0.0
                 game_over = true
+                _show_result()
 
 func _auto_attack() -> void:
     if attack_timer > 0.0:
@@ -185,7 +208,11 @@ func _update_hud() -> void:
         wave, int(elapsed) / 60, int(elapsed) % 60
     ]
     if game_over:
-        hint_label.text = "SURVIVED THE WILDERNESS! Tap to restart" if victory else "DEFEATED! Tap or press R to restart"
+        hint_label.text = "Choose Restart Adventure to play again."
+
+func _show_result() -> void:
+    result_title.text = "WILDERNESS SURVIVED!" if victory else "ADVENTURE ENDED"
+    result_panel.show()
 
 func _draw() -> void:
     var visible := get_viewport_rect().size / camera.zoom
