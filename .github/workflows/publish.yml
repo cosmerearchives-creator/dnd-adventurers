@@ -72,22 +72,22 @@ jobs:
           mkdir -p release-assets
           cp app/build/outputs/apk/release/app-release.apk release-assets/dnd-adventurers.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose release-assets/dnd-adventurers.apk
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-assets/dnd-adventurers.apk | grep "versionCode='7'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-assets/dnd-adventurers.apk | grep "versionCode='8'"
           sha256sum release-assets/dnd-adventurers.apk
           python3 - <<'PY'
           import hashlib,json,pathlib
           apk=pathlib.Path('release-assets/dnd-adventurers.apk')
-          pathlib.Path('release-assets/update.json').write_text(json.dumps({'versionCode':7,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest()}))
+          pathlib.Path('release-assets/update.json').write_text(json.dumps({'versionCode':8,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest()}))
           PY
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v0.3.0 >/dev/null 2>&1; then
-            gh release upload v0.3.0 release-assets/dnd-adventurers.apk release-assets/update.json --clobber
+          if gh release view v0.3.1 >/dev/null 2>&1; then
+            gh release upload v0.3.1 release-assets/dnd-adventurers.apk release-assets/update.json --clobber
           else
-            gh release create v0.3.0 release-assets/dnd-adventurers.apk release-assets/update.json --title "DnD Adventurers 0.3.0" --notes "Blender-rendered woodland druid and redesigned level-up menu."
+            gh release create v0.3.1 release-assets/dnd-adventurers.apk release-assets/update.json --title "DnD Adventurers 0.3.1" --notes "Improved woodland druid model with sculpted costume, detailed hair, boots, facial details and higher resolution sprites."
           fi
       - name: Verify updater download URLs
         run: |
@@ -99,6 +99,6 @@ jobs:
           python3 - <<'PY'
           import hashlib,json,pathlib
           meta=json.loads(pathlib.Path('/tmp/update.json').read_text())
-          assert meta['versionCode']==7
+          assert meta['versionCode']==8
           assert hashlib.sha256(pathlib.Path('/tmp/dnd-adventurers.apk').read_bytes()).hexdigest()==meta['sha256']
           PY
