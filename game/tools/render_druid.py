@@ -3,7 +3,10 @@ from mathutils import Vector
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 scene=bpy.context.scene
-scene.render.engine='BLENDER_EEVEE'
+scene.render.engine='BLENDER_WORKBENCH'
+scene.display.shading.color_type='MATERIAL'
+scene.display.shading.light='STUDIO'
+scene.display.shading.show_shadows=True
 scene.render.resolution_x=128
 scene.render.resolution_y=176
 scene.render.resolution_percentage=100
