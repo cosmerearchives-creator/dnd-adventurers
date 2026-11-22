@@ -75,6 +75,7 @@ func _ready() -> void:
 func _create_result_popup() -> void:
     var overlay := CenterContainer.new()
     overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
     hud.add_child(overlay)
     result_panel = PanelContainer.new()
     result_panel.custom_minimum_size = Vector2(520, 300)
