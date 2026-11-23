@@ -91,9 +91,10 @@ cam_data.type='ORTHO';cam_data.ortho_scale=3.25;scene.camera=cam
 out=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),'assets','enemies')
 os.makedirs(out,exist_ok=True)
 for kind in ['wolf','goblin','skeleton']:
- bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)
- # Reattach camera after deleting previous model objects.
- bpy.context.collection.objects.link(cam)
+ bpy.ops.object.select_all(action='DESELECT')
+ for old in list(bpy.context.scene.objects):
+  if old.type=='MESH' or old.name=='enemy_root':old.select_set(True)
+ bpy.ops.object.delete(use_global=False)
  build(kind)
  root=bpy.data.objects.new('enemy_root',None);bpy.context.collection.objects.link(root)
  for obj in list(bpy.context.scene.objects):
