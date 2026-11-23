@@ -120,8 +120,8 @@ func _draw_enemy_sprite(enemy: Dictionary) -> bool:
     var kind: String = enemy["kind"]
     var pos: Vector2 = enemy["pos"]
     var direction_vector: Vector2 = player_pos - pos
-    var direction := int(round(fposmod(direction_vector.angle() + PI / 2.0, TAU) / (TAU / 8.0))) % 8
-    var frame := int(elapsed * (9.0 if kind == "wolf" else 6.0)) % 4
+    var direction := int(round(fposmod(direction_vector.angle() - PI / 2.0, TAU) / (TAU / 8.0))) % 8
+    var frame := int(float(enemy.get("walk_clock", 0.0)) * (9.0 if kind == "wolf" else 6.0)) % 4
     var key := "%s_%d_%d" % [kind, direction, frame]
     if not enemy_frames.has(key):
         return false
@@ -346,7 +346,7 @@ func _spawn_enemy(wave: int) -> void:
     elif roll < 0.60:
         kind = "goblin"
     var stats: Dictionary = ENEMY_TYPES[kind]
-    enemies.append({"pos": pos, "kind": kind, "hp": stats["hp"], "attack": 0.0})
+    enemies.append({"pos": pos, "kind": kind, "hp": stats["hp"], "attack": 0.0, "walk_clock": rng.randf_range(0.0, 1.0)})
 
 func _update_enemies(delta: float) -> void:
     for enemy in enemies:
@@ -356,6 +356,7 @@ func _update_enemies(delta: float) -> void:
         var distance := offset.length()
         if distance > 35.0:
             enemy["pos"] += offset.normalized() * float(stats["speed"]) * delta
+            enemy["walk_clock"] = float(enemy["walk_clock"]) + delta
         enemy["attack"] = float(enemy["attack"]) - delta
         if distance < 43.0 and float(enemy["attack"]) <= 0.0:
             if rng.randf() < dodge_chance:
@@ -407,10 +408,10 @@ func _spawn_bolt(origin: Vector2, target: Dictionary, is_child: bool) -> void:
     var direction: Vector2 = (target["pos"] - origin).normalized()
     firebolts.append({"pos": origin, "target": target, "direction": direction, "life": 1.5, "child": is_child, "random": false})
 
-func _spawn_split_bolt(origin: Vector2) -> void:
+func _spawn_split_bolt(origin: Vector2, source_enemy: Dictionary) -> void:
     var angle := rng.randf_range(0.0, TAU)
     var direction := Vector2.RIGHT.rotated(angle)
-    firebolts.append({"pos": origin, "target": {}, "direction": direction, "life": 0.85, "child": true, "random": true})
+    firebolts.append({"pos": origin, "target": {}, "direction": direction, "life": 0.85, "child": true, "random": true, "excluded_enemy": source_enemy})
 
 func _damage_enemy(target: Dictionary, damage: float) -> void:
     if not enemies.has(target):
@@ -433,7 +434,7 @@ func _impact_bolt(bolt: Dictionary, target: Dictionary) -> void:
     # Split children fly straight in random directions and do not recursively split.
     if split_count > 0 and not bolt["child"]:
         for i in range(split_count):
-            _spawn_split_bolt(point)
+            _spawn_split_bolt(point, target)
 
 func _update_firebolts(delta: float) -> void:
     for i in range(firebolts.size() - 1, -1, -1):
@@ -455,6 +456,8 @@ func _update_firebolts(delta: float) -> void:
         var hit_radius := 10.0 * (1.0 + bolt_size_bonus)
         var hit: Dictionary = {}
         for enemy in enemies:
+            if bolt.has("excluded_enemy") and enemy == bolt["excluded_enemy"]:
+                continue
             var enemy_radius: float = float(ENEMY_TYPES[enemy["kind"]]["radius"])
             var center: Vector2 = enemy["pos"]
             var segment: Vector2 = bolt["pos"] - previous
