@@ -99,10 +99,35 @@ for kind in ['wolf','goblin','skeleton']:
  root=bpy.data.objects.new('enemy_root',None);bpy.context.collection.objects.link(root)
  for obj in list(bpy.context.scene.objects):
   if obj.type=='MESH':obj.parent=root
+ # Save the neutral pose and animate the actual limbs, not just the body bob.
+ parts=[(o,o.location.copy(),o.rotation_euler.copy()) for o in scene.objects if o.type=='MESH']
  for direction in range(8):
   for frame in range(4):
+   phase=frame*math.tau/4
+   for obj,base,rotation in parts:
+    obj.location=base.copy()
+    obj.rotation_euler=rotation.copy()
+    name=obj.name.lower()
+    side=-1 if base.x<0 else 1
+    front=-1 if base.y<0 else 1
+    if kind=='wolf':
+     if 'leg upper' in name or 'paw' in name:
+      stride=math.sin(phase+(0 if side*front>0 else math.pi))
+      obj.location.y+=.17*stride
+      obj.location.z+=.075*max(0,stride)
+     elif 'tail' in name:
+      obj.location.x+=.13*math.sin(phase)
+     elif 'head' in name or 'muzzle' in name or 'nose' in name:
+      obj.location.z+=.025*math.sin(phase*2)
+    else:
+     if 'leg' in name or 'femur' in name or 'shin' in name or 'foot' in name:
+      stride=math.sin(phase+(0 if side<0 else math.pi))
+      obj.location.y+=.16*stride
+      obj.location.z+=.07*max(0,stride)
+     if 'arm' in name or 'hand' in name or 'humerus' in name or 'forearm' in name:
+      obj.location.y-=.10*math.sin(phase+(0 if side<0 else math.pi))
    root.rotation_euler.z=direction*math.tau/8
-   root.location.z=.035*math.sin(frame*math.tau/4)
+   root.location.z=.025*math.sin(phase*2)
    scene.render.filepath=os.path.join(out,f'{kind}_{direction}_{frame}.png')
    bpy.ops.render.render(write_still=True)
-print('Rendered 96 enemy frames (3 kinds x 8 directions x 4 frames)')
+print('Rendered 96 animated enemy frames (3 kinds x 8 directions x 4 walking poses)')
