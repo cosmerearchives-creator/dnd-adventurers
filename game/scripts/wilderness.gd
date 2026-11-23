@@ -55,6 +55,7 @@ var touch_origin := Vector2.ZERO
 var touch_vector := Vector2.ZERO
 var rng := RandomNumberGenerator.new()
 var druid_frames: Dictionary = {}
+var enemy_frames: Dictionary = {}
 var walk_clock := 0.0
 var druid_state := "idle"
 var walking := false
@@ -92,6 +93,7 @@ func _ready() -> void:
     hint_label.text = "Drag to move. Fire bolts cast automatically."
     hud.add_child(hint_label)
     _load_druid_frames()
+    _load_enemy_frames()
     _create_result_popup()
     _create_level_menu()
     _update_hud()
@@ -104,6 +106,29 @@ func _load_druid_frames() -> void:
                 var path := "res://assets/druid/%s_%d_%d.png" % [animation, direction, frame]
                 if ResourceLoader.exists(path):
                     druid_frames["%s_%d_%d" % [animation, direction, frame]] = load(path)
+
+func _load_enemy_frames() -> void:
+    for kind in ["wolf", "goblin", "skeleton"]:
+        for direction in range(8):
+            for frame in range(4):
+                var key := "%s_%d_%d" % [kind, direction, frame]
+                var path := "res://assets/enemies/%s.png" % key
+                if ResourceLoader.exists(path):
+                    enemy_frames[key] = load(path)
+
+func _draw_enemy_sprite(enemy: Dictionary) -> bool:
+    var kind: String = enemy["kind"]
+    var pos: Vector2 = enemy["pos"]
+    var direction_vector: Vector2 = player_pos - pos
+    var direction := int(round(fposmod(direction_vector.angle() + PI / 2.0, TAU) / (TAU / 8.0))) % 8
+    var frame := int(elapsed * (9.0 if kind == "wolf" else 6.0)) % 4
+    var key := "%s_%d_%d" % [kind, direction, frame]
+    if not enemy_frames.has(key):
+        return false
+    var texture: Texture2D = enemy_frames[key]
+    var size := Vector2(84, 105) if kind == "wolf" else Vector2(80, 100)
+    draw_texture_rect(texture, Rect2(pos - Vector2(size.x * 0.5, size.y * 0.85), size), false)
+    return true
 
 func _draw_druid() -> bool:
     if druid_frames.is_empty():
@@ -511,8 +536,9 @@ func _draw() -> void:
         elif kind == "wolf":
             color = Color("#9c8571")
         draw_circle(pos + Vector2(4, 7), 19.0, Color(0.0, 0.0, 0.0, 0.24))
-        draw_circle(pos, float(ENEMY_TYPES[kind]["radius"]), color)
-        draw_circle(pos + Vector2(0, -5), 4.0, Color("#252922"))
+        if not _draw_enemy_sprite(enemy):
+            draw_circle(pos, float(ENEMY_TYPES[kind]["radius"]), color)
+            draw_circle(pos + Vector2(0, -5), 4.0, Color("#252922"))
     if not _draw_druid():
         draw_circle(player_pos + Vector2(4, 12), 24.0, Color(0, 0, 0, 0.28))
         var cloak := PackedVector2Array([player_pos + Vector2(-18, -14), player_pos + Vector2(18, -14), player_pos + Vector2(25, 24), player_pos + Vector2(-25, 24)])
