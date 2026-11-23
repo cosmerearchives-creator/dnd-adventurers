@@ -22,6 +22,7 @@ hair=mat('auburn hair',(.33,.12,.06))
 green=mat('forest green',(.14,.3,.15))
 leather=mat('fitted leather',(.2,.12,.075))
 gold=mat('bronze trim',(.62,.44,.17))
+dark=mat('deep forest',(.075,.14,.085))
 rig=bpy.data.objects.new('druid',None)
 bpy.context.collection.objects.link(rig)
 parts=[]
@@ -86,7 +87,6 @@ ball('hair cap',0,.06,2.59,.27,.22,.19,hair)
 ball('brooch',0,-.25,1.72,.08,.05,.08,gold)
 # More sculpted adult silhouette and detailed fantasy costume.
 moss=mat('light moss',(.28,.43,.17))
-dark=mat('deep forest',(.075,.14,.085))
 copper=mat('copper hair highlights',(.54,.23,.095))
 ivory=mat('ivory',(.82,.72,.52))
 def tapered(name,x,y,z,r1,r2,depth,material):
