@@ -1,5 +1,5 @@
 import bpy, math, os
-from mathutils import Vector
+from mathutils import Vector, Matrix
 scene=bpy.context.scene
 scene.render.engine='BLENDER_WORKBENCH'
 scene.display.shading.color_type='MATERIAL'
@@ -130,4 +130,33 @@ for kind in ['wolf','goblin','skeleton']:
    root.location.z=.025*math.sin(phase*2)
    scene.render.filepath=os.path.join(out,f'{kind}_{direction}_{frame}.png')
    bpy.ops.render.render(write_still=True)
-print('Rendered 96 animated enemy frames (3 kinds x 8 directions x 4 walking poses)')
+  for action, count in [('attack',4),('hit',1),('death',3)]:
+   for frame in range(count):
+    root.location.z=0
+    root.rotation_euler=(0,0,direction*math.tau/8)
+    for obj,base,rotation in parts:
+     obj.location=base.copy()
+     obj.rotation_euler=rotation.copy()
+     name=obj.name.lower()
+     if action=='attack':
+      amount=[-.35,1.0,.45,0.0][frame]
+      if kind=='wolf':
+       if any(k in name for k in ['head','muzzle','nose','eye','ear','neck','chest']):
+        obj.location.y-=.24*amount
+        obj.location.z+=.09*amount
+       elif ('paw' in name or 'leg upper' in name) and base.y<0:
+        obj.location.y-=.20*amount
+      elif base.x>0 and any(k in name for k in ['arm','hand','humerus','dagger','sword']):
+       pivot=Vector((.40,0,1.50))
+       swing=Matrix.Rotation([-.9,1.65,.65,0][frame],3,'X')
+       obj.location=pivot+swing@(base-pivot)
+       obj.rotation_euler=(swing@rotation.to_matrix()).to_euler()
+     elif action=='hit':
+      obj.location.y+=.12*base.z
+     elif action=='death':
+      fall=Matrix.Rotation([.45,1.05,1.48][frame],3,'X')
+      obj.location=fall@base
+      obj.rotation_euler=(fall@rotation.to_matrix()).to_euler()
+    scene.render.filepath=os.path.join(out,f'{kind}_{action}_{direction}_{frame}.png')
+    bpy.ops.render.render(write_still=True)
+print('Rendered 288 enemy frames')
