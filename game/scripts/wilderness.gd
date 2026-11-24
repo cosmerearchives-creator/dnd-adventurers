@@ -37,6 +37,7 @@ var level_panel: PanelContainer
 var upgrade_list: VBoxContainer
 const UPGRADES := ["attack_speed", "move_speed", "dodge", "multishot", "split", "hitbox", "explosion"]
 var enemies: Array[Dictionary] = []
+var corpses: Array[Dictionary] = []
 var pickups: Array[Vector2] = []
 var firebolts: Array[Dictionary] = []
 var facing := Vector2.RIGHT
@@ -110,8 +111,12 @@ func _load_druid_frames() -> void:
 func _load_enemy_frames() -> void:
     for kind in ["wolf", "goblin", "skeleton"]:
         for direction in range(8):
-            for frame in range(4):
+            for frame in range(12):
                 var key := "%s_%d_%d" % [kind, direction, frame]
+                if frame >= 4:
+                    var action := "attack" if frame < 8 else ("hit" if frame == 8 else "death")
+                    var index := frame - (4 if frame < 8 else (8 if frame == 8 else 9))
+                    key = "%s_%s_%d_%d" % [kind, action, direction, index]
                 var path := "res://assets/enemies/%s.png" % key
                 if ResourceLoader.exists(path):
                     enemy_frames[key] = load(path)
@@ -123,6 +128,16 @@ func _draw_enemy_sprite(enemy: Dictionary) -> bool:
     var direction := int(round(fposmod(direction_vector.angle() - PI / 2.0, TAU) / (TAU / 8.0))) % 8
     var frame := int(float(enemy.get("walk_clock", 0.0)) * (9.0 if kind == "wolf" else 6.0)) % 4
     var key := "%s_%d_%d" % [kind, direction, frame]
+    if enemy.get("dead", false):
+        direction = int(enemy["death_direction"])
+        key = "%s_death_%d_%d" % [kind, direction, mini(2, int(float(enemy["age"]) * 8.0))]
+    elif float(enemy.get("attack_age", -1.0)) >= 0.0:
+        direction = int(enemy["attack_direction"])
+        var age := float(enemy["attack_age"])
+        frame = 0 if age < 0.35 else (1 if age < 0.48 else (2 if age < 0.65 else 3))
+        key = "%s_attack_%d_%d" % [kind, direction, frame]
+    elif float(enemy.get("hurt", 0.0)) > 0.0:
+        key = "%s_hit_%d_0" % [kind, direction]
     if not enemy_frames.has(key):
         return false
     var texture: Texture2D = enemy_frames[key]
@@ -349,26 +364,37 @@ func _spawn_enemy(wave: int) -> void:
     enemies.append({"pos": pos, "kind": kind, "hp": stats["hp"], "attack": 0.0, "walk_clock": rng.randf_range(0.0, 1.0)})
 
 func _update_enemies(delta: float) -> void:
+    for i in range(corpses.size() - 1, -1, -1):
+        corpses[i]["age"] = float(corpses[i]["age"]) + delta
+        if float(corpses[i]["age"]) > 0.85:
+            corpses.remove_at(i)
     for enemy in enemies:
         var kind: String = enemy["kind"]
         var stats: Dictionary = ENEMY_TYPES[kind]
         var offset: Vector2 = player_pos - enemy["pos"]
         var distance := offset.length()
-        if distance > 35.0:
-            enemy["pos"] += offset.normalized() * float(stats["speed"]) * delta
+        enemy["hurt"] = maxf(0.0, float(enemy.get("hurt", 0.0)) - delta)
+        var age := float(enemy.get("attack_age", -1.0))
+        if age >= 0.0:
+            var next_age := age + delta
+            if age < 0.35 and next_age >= 0.35:
+                var aim: Vector2 = enemy["attack_aim"]
+                if distance <= 52.0 and offset.normalized().dot(aim) >= 0.5 and rng.randf() >= dodge_chance:
+                    player_hp = maxf(0.0, player_hp - float(stats["damage"]))
+                    hit_timer = 0.2
+                    if player_hp <= 0.0:
+                        game_over = true
+                        _show_result()
+                        return
+            enemy["attack_age"] = -1.0 if next_age >= 1.0 else next_age
+            continue
+        if distance > 40.0:
+            enemy["pos"] += offset.normalized() * minf(distance - 40.0, float(stats["speed"]) * delta)
             enemy["walk_clock"] = float(enemy["walk_clock"]) + delta
-        enemy["attack"] = float(enemy["attack"]) - delta
-        if distance < 43.0 and float(enemy["attack"]) <= 0.0:
-            if rng.randf() < dodge_chance:
-                enemy["attack"] = 1.0
-                continue
-            player_hp -= float(stats["damage"])
-            enemy["attack"] = 1.0
-            hit_timer = 0.2
-            if player_hp <= 0.0:
-                player_hp = 0.0
-                game_over = true
-                _show_result()
+        else:
+            enemy["attack_age"] = 0.0
+            enemy["attack_aim"] = offset.normalized() if distance > 0.01 else Vector2.DOWN
+            enemy["attack_direction"] = int(round(fposmod(offset.angle() - PI / 2.0, TAU) / (TAU / 8.0))) % 8
 
 func _auto_attack() -> void:
     if attack_timer > 0.0:
@@ -417,7 +443,14 @@ func _damage_enemy(target: Dictionary, damage: float) -> void:
     if not enemies.has(target):
         return
     target["hp"] = float(target["hp"]) - damage
+    target["hurt"] = 0.15
     if float(target["hp"]) <= 0.0:
+        var corpse := target.duplicate()
+        corpse["dead"] = true
+        corpse["age"] = 0.0
+        var offset: Vector2 = player_pos - target["pos"]
+        corpse["death_direction"] = int(round(fposmod(offset.angle() - PI / 2.0, TAU) / (TAU / 8.0))) % 8
+        corpses.append(corpse)
         pickups.append(target["pos"])
         enemies.erase(target)
 
@@ -428,6 +461,8 @@ func _impact_bolt(bolt: Dictionary, target: Dictionary) -> void:
         var radius := 65.0 + 25.0 * float(explosion_level)
         explosions.append({"pos": point, "radius": radius, "age": 0.0, "duration": 0.38})
         for enemy in enemies.duplicate():
+            if bolt.has("excluded_enemy") and enemy == bolt["excluded_enemy"]:
+                continue
             if point.distance_to(enemy["pos"]) <= radius:
                 _damage_enemy(enemy, player_damage * 0.65)
     # Every primary bolt produces its splits, even if there are no other targets.
@@ -528,6 +563,8 @@ func _draw() -> void:
     for pickup in pickups:
         if area.has_point(pickup):
             draw_circle(pickup, 8.0, Color("#63e5e7"))
+    for corpse in corpses:
+        _draw_enemy_sprite(corpse)
     for enemy in enemies:
         var pos: Vector2 = enemy["pos"]
         if not area.has_point(pos):
