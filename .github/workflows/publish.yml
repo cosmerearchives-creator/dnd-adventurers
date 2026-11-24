@@ -44,13 +44,13 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y blender libegl1 libgl1 libopengl0 libx11-6
-          blender -b -t 2 --python game/tools/render_druid.py
+          blender -b -t 2 --python-exit-code 1 --python game/tools/render_druid.py
           test "$(find game/assets/druid -name '*.png' | wc -l)" -eq 96
       - name: Render Blender wilderness enemies
         run: |
           set -euo pipefail
-          blender -b -t 2 --python game/tools/render_enemies.py
-          test "$(find game/assets/enemies -name '*.png' | wc -l)" -eq 96
+          blender -b -t 2 --python-exit-code 1 --python game/tools/render_enemies.py
+          test "$(find game/assets/enemies -name '*.png' | wc -l)" -eq 288
       - name: Export Godot game for Android WebView
         run: |
           mkdir -p web-build app/src/main/assets/game
@@ -77,22 +77,22 @@ jobs:
           mkdir -p release-assets
           cp app/build/outputs/apk/release/app-release.apk release-assets/dnd-adventurers.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose release-assets/dnd-adventurers.apk
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-assets/dnd-adventurers.apk | grep "versionCode='12'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-assets/dnd-adventurers.apk | grep "versionCode='13'"
           sha256sum release-assets/dnd-adventurers.apk
           python3 - <<'PY'
           import hashlib,json,pathlib
           apk=pathlib.Path('release-assets/dnd-adventurers.apk')
-          pathlib.Path('release-assets/update.json').write_text(json.dumps({'versionCode':12,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest()}))
+          pathlib.Path('release-assets/update.json').write_text(json.dumps({'versionCode':13,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest()}))
           PY
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v0.3.5 >/dev/null 2>&1; then
-            gh release upload v0.3.5 release-assets/dnd-adventurers.apk release-assets/update.json --clobber
+          if gh release view v0.3.6 >/dev/null 2>&1; then
+            gh release upload v0.3.6 release-assets/dnd-adventurers.apk release-assets/update.json --clobber
           else
-            gh release create v0.3.5 release-assets/dnd-adventurers.apk release-assets/update.json --title "DnD Adventurers 0.3.5" --notes "Animated wolf, goblin, and skeleton walking sprites; corrected eight-direction enemy facing; split projectiles cannot strike their source enemy."
+            gh release create v0.3.6 release-assets/dnd-adventurers.apk release-assets/update.json --title "DnD Adventurers 0.3.6" --notes "Telegraphed enemy attacks, directional strikes, recovery, hit reactions and death animations."
           fi
       - name: Verify updater download URLs
         run: |
@@ -104,6 +104,6 @@ jobs:
           python3 - <<'PY'
           import hashlib,json,pathlib
           meta=json.loads(pathlib.Path('/tmp/update.json').read_text())
-          assert meta['versionCode']==12
+          assert meta['versionCode']==13
           assert hashlib.sha256(pathlib.Path('/tmp/dnd-adventurers.apk').read_bytes()).hexdigest()==meta['sha256']
           PY
