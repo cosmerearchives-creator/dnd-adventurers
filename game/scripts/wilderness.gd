@@ -123,11 +123,16 @@ func _load_enemy_frames() -> void:
                 if ResourceLoader.exists(path):
                     enemy_frames[key] = load(path)
 
+# Blender faces -Y toward the camera at frame zero (screen down).
+# Positive Blender Z rotation turns toward screen right, opposite screen angles.
+func _enemy_direction(offset: Vector2) -> int:
+    return int(round(fposmod(PI / 2.0 - offset.angle(), TAU) / (TAU / 8.0))) % 8
+
 func _draw_enemy_sprite(enemy: Dictionary) -> bool:
     var kind: String = enemy["kind"]
     var pos: Vector2 = enemy["pos"]
     var direction_vector: Vector2 = player_pos - pos
-    var direction := int(round(fposmod(direction_vector.angle() - PI / 2.0, TAU) / (TAU / 8.0))) % 8
+    var direction := _enemy_direction(direction_vector)
     var frame := int(float(enemy.get("walk_clock", 0.0)) * (9.0 if kind == "wolf" else 6.0)) % 4
     var key := "%s_%d_%d" % [kind, direction, frame]
     if enemy.get("dead", false):
@@ -398,7 +403,7 @@ func _update_enemies(delta: float) -> void:
         else:
             enemy["attack_age"] = 0.0
             enemy["attack_aim"] = offset.normalized() if distance > 0.01 else Vector2.DOWN
-            enemy["attack_direction"] = int(round(fposmod(offset.angle() - PI / 2.0, TAU) / (TAU / 8.0))) % 8
+            enemy["attack_direction"] = _enemy_direction(offset)
 
 func _separate_enemies() -> void:
     for pass_index in range(3):
@@ -476,7 +481,7 @@ func _damage_enemy(target: Dictionary, damage: float) -> void:
         corpse["dead"] = true
         corpse["age"] = 0.0
         var offset: Vector2 = player_pos - target["pos"]
-        corpse["death_direction"] = int(round(fposmod(offset.angle() - PI / 2.0, TAU) / (TAU / 8.0))) % 8
+        corpse["death_direction"] = _enemy_direction(offset)
         corpses.append(corpse)
         pickups.append(target["pos"])
         enemies.erase(target)
