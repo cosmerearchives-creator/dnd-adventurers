@@ -42,6 +42,7 @@ var impacts: Array[Dictionary] = []
 var corpses: Array[Dictionary] = []
 var pickups: Array[Vector2] = []
 var firebolts: Array[Dictionary] = []
+var firebolt_texture: Texture2D = null
 var facing := Vector2.RIGHT
 var movement_facing := Vector2.RIGHT
 var casting_target: Dictionary = {}
@@ -98,6 +99,8 @@ func _ready() -> void:
     hint_label.text = "Drag to move. Fire bolts cast automatically."
     hud.add_child(hint_label)
     _create_ground_cache()
+    if ResourceLoader.exists("res://assets/firebolt.png"):
+        firebolt_texture = load("res://assets/firebolt.png") as Texture2D
     _load_druid_frames()
     _load_enemy_frames()
     _create_result_popup()
@@ -664,6 +667,12 @@ func _draw() -> void:
         var bolt_radius := 10.0 * (1.0 + bolt_size_bonus)
         var p: Vector2 = bolt["pos"]
         var d: Vector2 = bolt["direction"]
+        if firebolt_texture != null:
+            var size := Vector2.ONE * bolt_radius * 6.0
+            draw_set_transform(p, d.angle() + PI / 2.0)
+            draw_texture_rect(firebolt_texture, Rect2(-size * 0.5, size), false)
+            draw_set_transform(Vector2.ZERO)
+            continue
         draw_line(p - d * 34.0, p, Color("#ff5722", 0.45), bolt_radius * 1.6)
         draw_line(p - d * 19.0, p, Color("#ffb331", 0.85), bolt_radius * 0.9)
         draw_circle(p, bolt_radius, Color("#ff7a19"))
