@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y blender libegl1 libgl1 libopengl0 libx11-6
+          sudo apt-get install -y blender python3-numpy libegl1 libgl1 libopengl0 libx11-6
           blender -b -t 2 --python-exit-code 1 --python game/tools/render_druid.py
           test "$(find game/assets/druid -name '*.png' | wc -l)" -eq 96
       - name: Render Blender wilderness enemies
@@ -56,6 +56,7 @@ jobs:
           set -euo pipefail
           curl -fL --retry 3 'https://drive.google.com/uc?export=download&id=1EHnQi2OsUpiFm1Kg3t6gyy4A7BO1qVNV' -o /tmp/firebolt.glb
           python3 -c "assert open('/tmp/firebolt.glb','rb').read(4)==b'glTF'"
+          blender -b --python-exit-code 1 --python-expr 'import numpy; print(numpy.__version__)'
           FIREBOLT_MODEL=/tmp/firebolt.glb blender -b -t 2 --python-exit-code 1 --python game/tools/render_firebolt.py
           test -s game/assets/firebolt.png
       - name: Export Godot game for Android WebView
