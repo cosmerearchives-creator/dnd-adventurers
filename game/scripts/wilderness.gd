@@ -97,6 +97,7 @@ func _ready() -> void:
     hint_label.add_theme_font_size_override("font_size", 17)
     hint_label.text = "Drag to move. Fire bolts cast automatically."
     hud.add_child(hint_label)
+    _create_ground_cache()
     _load_druid_frames()
     _load_enemy_frames()
     _create_result_popup()
@@ -584,23 +585,8 @@ func _show_result() -> void:
 
 func _draw() -> void:
     var visible := get_viewport_rect().size / camera.zoom
-    var area := Rect2(player_pos - visible * 0.7, visible * 1.4)
-    draw_rect(Rect2(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS * 2.0), Color("#426a3d"))
-    # Stable irregular ground patches, grass tufts and scattered leaf litter.
-    for x in range(floori(area.position.x / 64.0), ceili(area.end.x / 64.0)):
-        for y in range(floori(area.position.y / 64.0), ceili(area.end.y / 64.0)):
-            var h := absf(sin(x * 127.1 + y * 311.7) * 43758.5453)
-            var f := fposmod(h, 1.0)
-            var p := Vector2(x * 64.0 + f * 57.0, y * 64.0 + fposmod(h * 17.3, 1.0) * 57.0)
-            draw_circle(p, 14.0 + f * 26.0, Color(0.19, 0.32, 0.16, 0.12))
-            for k in range(3):
-                var q := p + Vector2(k * 4 - 4, 0)
-                draw_line(q, q + Vector2(k * 3 - 3, -5 - f * 8), Color("#72904b"), 1.5)
-            if f > 0.88:
-                draw_circle(p + Vector2(12, 8), 2.0, Color("#d0b477"))
-    for stone in stones:
-        if area.has_point(stone):
-            _draw_rock(stone)
+    var area := Rect2(camera.get_screen_center_position() - visible * 0.5, visible).grow(100.0)
+
     for pickup in pickups:
         if area.has_point(pickup):
             var bob := Vector2(0, sin(elapsed * 4.0 + pickup.x) * 3.0)
@@ -636,12 +622,16 @@ func _draw() -> void:
             draw_rect(Rect2(bar, Vector2(38, 5)), Color("#302422"))
             draw_rect(Rect2(bar, Vector2(38 * ratio, 5)), Color("#e26b50"))
     for effect in impacts:
+        if not area.has_point(effect["pos"]):
+            continue
         var t := float(effect["age"]) / float(effect["duration"])
         var p: Vector2 = effect["pos"]
         for k in range(8):
             var d := Vector2.RIGHT.rotated(k * TAU / 8.0)
             draw_line(p + d * 8, p + d * (12 + 30 * t), Color(1, 0.65, 0.2, 1-t), 3)
     for popup in damage_popups:
+        if not area.has_point(popup["pos"]):
+            continue
         var t := float(popup["age"]) / float(popup["duration"])
         var p: Vector2 = popup["pos"] - Vector2(12, 60 + 38 * t)
         draw_string(ThemeDB.fallback_font, p, str(roundi(float(popup["amount"]))), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 0.9, 0.65, 1-t))
@@ -727,3 +717,42 @@ func _draw_forest_tree(p: Vector2) -> void:
                 draw_circle(q, 25, Color("#234c2e"))
                 draw_circle(q - Vector2(5, 7), 20, Color("#3d6938").lightened(i * 0.025))
     draw_set_transform(Vector2.ZERO)
+
+func _create_ground_cache() -> void:
+    # CanvasItem draw commands are retained until queue_redraw is called.
+    # Separate static chunks from the dynamic combat canvas.
+    for cx in range(-5, 5):
+        for cy in range(-5, 5):
+            var chunk := Node2D.new()
+            chunk.z_index = -2
+            add_child(chunk)
+            chunk.position = Vector2(cx, cy) * 512.0
+            var area := Rect2(Vector2.ZERO, Vector2(512, 512))
+            chunk.draw.connect(_draw_ground_chunk.bind(chunk, area))
+    var rocks := Node2D.new()
+    rocks.z_index = -1
+    add_child(rocks)
+    rocks.draw.connect(_draw_static_rocks.bind(rocks))
+
+func _draw_ground_chunk(chunk: Node2D, area: Rect2) -> void:
+    chunk.draw_rect(area, Color("#426a3d"))
+    for x in range(floori(area.position.x / 64.0), ceili(area.end.x / 64.0)):
+        for y in range(floori(area.position.y / 64.0), ceili(area.end.y / 64.0)):
+            var h := absf(sin((x + chunk.position.x / 64.0) * 127.1 + (y + chunk.position.y / 64.0) * 311.7) * 43758.5453)
+            var f := fposmod(h, 1.0)
+            var p := Vector2(x * 64.0 + f * 57.0, y * 64.0 + fposmod(h * 17.3, 1.0) * 57.0)
+            chunk.draw_circle(p, 14.0 + f * 26.0, Color(0.19, 0.32, 0.16, 0.12))
+            for k in range(3):
+                var q := p + Vector2(k * 4 - 4, 0)
+                chunk.draw_line(q, q + Vector2(k * 3 - 3, -5 - f * 8), Color("#72904b"), 1.5)
+            if f > 0.88:
+                chunk.draw_circle(p + Vector2(12, 8), 2.0, Color("#d0b477"))
+
+func _draw_static_rocks(node: Node2D) -> void:
+    for p in stones:
+        var scale_factor := 0.7 + fposmod(absf(sin(p.x * 0.31 + p.y)), 1.0)
+        node.draw_set_transform(p, 0.0, Vector2.ONE * scale_factor)
+        node.draw_circle(Vector2(5, 5), 16, Color(0.08, 0.14, 0.08, 0.25))
+        node.draw_colored_polygon(PackedVector2Array([Vector2(-17,4),Vector2(-12,-10),Vector2(2,-15),Vector2(15,-7),Vector2(18,5),Vector2(5,11)]), Color("#777d70"))
+        node.draw_colored_polygon(PackedVector2Array([Vector2(-12,-10),Vector2(2,-15),Vector2(15,-7),Vector2(0,0),Vector2(-17,4)]), Color("#a2a394"))
+    node.draw_set_transform(Vector2.ZERO)
