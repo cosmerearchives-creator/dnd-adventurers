@@ -586,26 +586,21 @@ func _draw() -> void:
     var visible := get_viewport_rect().size / camera.zoom
     var area := Rect2(player_pos - visible * 0.7, visible * 1.4)
     draw_rect(Rect2(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS * 2.0), Color("#426a3d"))
-    # Ground detail is deterministic and cheap: only draw near the camera.
-    var start_x := int(floor(area.position.x / 100.0))
-    var end_x := int(ceil(area.end.x / 100.0))
-    var start_y := int(floor(area.position.y / 100.0))
-    var end_y := int(ceil(area.end.y / 100.0))
-    for x in range(start_x, end_x):
-        for y in range(start_y, end_y):
-            var center := Vector2(x * 100.0 + 35.0, y * 100.0 + 47.0)
-            draw_circle(center, 17.0, Color("#4a7440"))
-            draw_circle(center + Vector2(30, -21), 7.0, Color("#60834a"))
+    # Stable irregular ground patches, grass tufts and scattered leaf litter.
+    for x in range(floori(area.position.x / 64.0), ceili(area.end.x / 64.0)):
+        for y in range(floori(area.position.y / 64.0), ceili(area.end.y / 64.0)):
+            var h := absf(sin(x * 127.1 + y * 311.7) * 43758.5453)
+            var f := fposmod(h, 1.0)
+            var p := Vector2(x * 64.0 + f * 57.0, y * 64.0 + fposmod(h * 17.3, 1.0) * 57.0)
+            draw_circle(p, 14.0 + f * 26.0, Color(0.19, 0.32, 0.16, 0.12))
+            for k in range(3):
+                var q := p + Vector2(k * 4 - 4, 0)
+                draw_line(q, q + Vector2(k * 3 - 3, -5 - f * 8), Color("#72904b"), 1.5)
+            if f > 0.88:
+                draw_circle(p + Vector2(12, 8), 2.0, Color("#d0b477"))
     for stone in stones:
         if area.has_point(stone):
-            draw_circle(stone, 13.0, Color("#7e8074"))
-            draw_circle(stone + Vector2(-4, -4), 7.0, Color("#a6a69b"))
-    for tree in trees:
-        if area.has_point(tree):
-            draw_circle(tree + Vector2(7, 11), 35.0, Color(0.08, 0.18, 0.08, 0.35))
-            draw_rect(Rect2(tree - Vector2(5, 3), Vector2(10, 28)), Color("#5a3c28"))
-            draw_circle(tree + Vector2(0, -15), 33.0, Color("#204d2e"))
-            draw_circle(tree + Vector2(-11, -24), 21.0, Color("#31643a"))
+            _draw_rock(stone)
     for pickup in pickups:
         if area.has_point(pickup):
             var bob := Vector2(0, sin(elapsed * 4.0 + pickup.x) * 3.0)
@@ -613,6 +608,9 @@ func _draw() -> void:
             draw_colored_polygon(PackedVector2Array([pickup + bob + Vector2(0,-10), pickup + bob + Vector2(6,0), pickup + bob + Vector2(0,8), pickup + bob + Vector2(-6,0)]), Color("#63e5e7"))
     var actors: Array[Dictionary] = []
     actors.append({"pos": player_pos, "player": true})
+    for tree in trees:
+        if area.grow(150.0).has_point(tree):
+            actors.append({"pos": tree, "tree": true})
     for corpse in corpses:
         if area.has_point(corpse["pos"]):
             actors.append(corpse)
@@ -621,7 +619,9 @@ func _draw() -> void:
             actors.append(enemy)
     actors.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["pos"].y < b["pos"].y)
     for actor in actors:
-        if actor.get("player", false):
+        if actor.get("tree", false):
+            _draw_forest_tree(actor["pos"])
+        elif actor.get("player", false):
             _draw_player_actor()
         elif actor.get("dead", false):
             _draw_enemy_sprite(actor)
@@ -693,3 +693,37 @@ func _draw_living_enemy(enemy: Dictionary) -> void:
     if not _draw_enemy_sprite(enemy):
         draw_circle(pos, float(ENEMY_TYPES[kind]["radius"]), color)
         draw_circle(pos + Vector2(0, -5), 4.0, Color("#252922"))
+
+func _draw_rock(p: Vector2) -> void:
+    var scale_factor := 0.7 + fposmod(absf(sin(p.x * 0.31 + p.y)), 1.0)
+    draw_set_transform(p, 0.0, Vector2.ONE * scale_factor)
+    draw_circle(Vector2(5, 5), 16, Color(0.08, 0.14, 0.08, 0.25))
+    draw_colored_polygon(PackedVector2Array([Vector2(-17,4),Vector2(-12,-10),Vector2(2,-15),Vector2(15,-7),Vector2(18,5),Vector2(5,11)]), Color("#777d70"))
+    draw_colored_polygon(PackedVector2Array([Vector2(-12,-10),Vector2(2,-15),Vector2(15,-7),Vector2(0,0),Vector2(-17,4)]), Color("#a2a394"))
+    draw_set_transform(Vector2.ZERO)
+
+func _draw_forest_tree(p: Vector2) -> void:
+    var f := absf(sin(p.x * 0.17 + p.y * 0.29))
+    var size_factor := 0.75 + f * 0.85
+    draw_set_transform(p, 0.0, Vector2.ONE * size_factor)
+    draw_circle(Vector2(12, 8), 35, Color(0.05, 0.12, 0.06, 0.28))
+    if f < 0.18:
+        for i in range(5):
+            var q := Vector2(i * 12 - 24, -absf(sin(i * 2.1)) * 12)
+            draw_circle(q, 15, Color("#294c2c"))
+            draw_circle(q - Vector2(3, 5), 11, Color("#52723b"))
+    else:
+        draw_colored_polygon(PackedVector2Array([Vector2(-10,3),Vector2(-5,-70),Vector2(6,-70),Vector2(11,3)]), Color("#63472e"))
+        draw_line(Vector2(-3,-3), Vector2(-2,-60), Color("#98704a"), 3)
+        if f > 0.65:
+            for i in range(3):
+                var y := -25.0 - i * 22.0
+                var w := 40.0 - i * 8.0
+                draw_colored_polygon(PackedVector2Array([Vector2(-w,y),Vector2(0,y-58),Vector2(w,y),Vector2(0,y+9)]), Color("#234e35").lightened(i * 0.07))
+                draw_colored_polygon(PackedVector2Array([Vector2(-w,y),Vector2(0,y-58),Vector2(0,y+9)]), Color("#426b40").lightened(i * 0.05))
+        else:
+            for i in range(7):
+                var q := Vector2(cos(i * 2.4) * 26, -65 + sin(i * 2.4) * 21)
+                draw_circle(q, 25, Color("#234c2e"))
+                draw_circle(q - Vector2(5, 7), 20, Color("#3d6938").lightened(i * 0.025))
+    draw_set_transform(Vector2.ZERO)
