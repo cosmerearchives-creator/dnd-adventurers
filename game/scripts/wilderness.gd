@@ -43,6 +43,8 @@ var corpses: Array[Dictionary] = []
 var pickups: Array[Vector2] = []
 var firebolts: Array[Dictionary] = []
 var facing := Vector2.RIGHT
+var movement_facing := Vector2.RIGHT
+var casting_target: Dictionary = {}
 var cast_timer := 0.0
 var trees: Array[Vector2] = []
 var stones: Array[Vector2] = []
@@ -155,7 +157,7 @@ func _draw_enemy_sprite(enemy: Dictionary) -> bool:
 func _draw_druid() -> bool:
     if druid_frames.is_empty():
         return false
-    var direction := int(round(fposmod(facing.angle() + PI / 2.0, TAU) / (TAU / 8.0))) % 8
+    var direction := _enemy_direction(facing)
     var frame := 0
     if druid_state == "walk":
         frame = int(walk_clock * 12.0) % 8
@@ -333,10 +335,9 @@ func _process(delta: float) -> void:
         walk_clock += delta
     else:
         walk_clock = 0.0
-    druid_state = "hit" if hit_timer > 0.0 else ("walk" if walking else ("cast" if cast_timer > 0.0 else "idle"))
     player_pos += movement.limit_length(1.0) * PLAYER_SPEED * (1.0 + move_bonus) * delta
     if movement.length() > 0.1:
-        facing = movement.normalized()
+        movement_facing = movement.normalized()
     player_pos = player_pos.clamp(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS)
     camera.position = player_pos
     attack_timer -= delta
@@ -355,6 +356,17 @@ func _process(delta: float) -> void:
     _update_firebolts(delta)
     _update_explosions(delta)
     _auto_attack()
+    if cast_timer > 0.0:
+        if not casting_target.is_empty() and enemies.has(casting_target):
+            var target_offset: Vector2 = casting_target["pos"] - player_pos
+            if target_offset.length_squared() > 0.001:
+                aim_direction = target_offset.normalized()
+        facing = aim_direction
+        druid_state = "cast"
+    else:
+        if walking:
+            facing = movement_facing
+        druid_state = "hit" if hit_timer > 0.0 else ("walk" if walking else "idle")
     _collect_pickups()
     _update_hud()
     queue_redraw()
@@ -444,6 +456,7 @@ func _auto_attack() -> void:
     attack_flash = 0.20
     var direction: Vector2 = (enemies[nearest]["pos"] - player_pos).normalized()
     aim_direction = direction
+    casting_target = enemies[nearest]
     _spawn_bolt(_casting_origin(direction), enemies[nearest], false)
     if extra_fireball:
         var second := -1
