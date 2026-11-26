@@ -37,6 +37,8 @@ var level_panel: PanelContainer
 var upgrade_list: VBoxContainer
 const UPGRADES := ["attack_speed", "move_speed", "dodge", "multishot", "split", "hitbox", "explosion"]
 var enemies: Array[Dictionary] = []
+var damage_popups: Array[Dictionary] = []
+var impacts: Array[Dictionary] = []
 var corpses: Array[Dictionary] = []
 var pickups: Array[Vector2] = []
 var firebolts: Array[Dictionary] = []
@@ -343,6 +345,8 @@ func _process(delta: float) -> void:
             _spawn_enemy(wave)
         spawn_timer = maxf(0.25, 2.0 - elapsed / 420.0)
     _update_enemies(delta)
+    _separate_enemies()
+    _update_feedback(delta)
     _update_firebolts(delta)
     _update_explosions(delta)
     _auto_attack()
@@ -396,6 +400,28 @@ func _update_enemies(delta: float) -> void:
             enemy["attack_aim"] = offset.normalized() if distance > 0.01 else Vector2.DOWN
             enemy["attack_direction"] = int(round(fposmod(offset.angle() - PI / 2.0, TAU) / (TAU / 8.0))) % 8
 
+func _separate_enemies() -> void:
+    for pass_index in range(3):
+        for i in range(enemies.size()):
+            var a: Dictionary = enemies[i]
+            for j in range(i + 1, enemies.size()):
+                var b: Dictionary = enemies[j]
+                var offset: Vector2 = b["pos"] - a["pos"]
+                var distance := offset.length()
+                var spacing := float(ENEMY_TYPES[a["kind"]]["radius"]) + float(ENEMY_TYPES[b["kind"]]["radius"])
+                if distance < spacing:
+                    var axis := offset / distance if distance > 0.001 else Vector2.RIGHT.rotated(float(i + j))
+                    var push := axis * (spacing - distance) * 0.5
+                    a["pos"] = (a["pos"] - push).clamp(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS)
+                    b["pos"] = (b["pos"] + push).clamp(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS)
+
+func _update_feedback(delta: float) -> void:
+    for collection in [damage_popups, impacts]:
+        for i in range(collection.size() - 1, -1, -1):
+            collection[i]["age"] = float(collection[i]["age"]) + delta
+            if float(collection[i]["age"]) >= float(collection[i]["duration"]):
+                collection.remove_at(i)
+
 func _auto_attack() -> void:
     if attack_timer > 0.0:
         return
@@ -444,6 +470,7 @@ func _damage_enemy(target: Dictionary, damage: float) -> void:
         return
     target["hp"] = float(target["hp"]) - damage
     target["hurt"] = 0.15
+    damage_popups.append({"pos": target["pos"], "amount": damage, "age": 0.0, "duration": 0.75})
     if float(target["hp"]) <= 0.0:
         var corpse := target.duplicate()
         corpse["dead"] = true
@@ -456,6 +483,7 @@ func _damage_enemy(target: Dictionary, damage: float) -> void:
 
 func _impact_bolt(bolt: Dictionary, target: Dictionary) -> void:
     var point: Vector2 = bolt["pos"]
+    impacts.append({"pos": point, "age": 0.0, "duration": 0.28})
     _damage_enemy(target, player_damage * (0.65 if bolt["child"] else 1.0))
     if explosion_level > 0:
         var radius := 65.0 + 25.0 * float(explosion_level)
@@ -562,33 +590,43 @@ func _draw() -> void:
             draw_circle(tree + Vector2(-11, -24), 21.0, Color("#31643a"))
     for pickup in pickups:
         if area.has_point(pickup):
-            draw_circle(pickup, 8.0, Color("#63e5e7"))
+            var bob := Vector2(0, sin(elapsed * 4.0 + pickup.x) * 3.0)
+            draw_circle(pickup, 12.0, Color(0.3, 0.9, 0.9, 0.18))
+            draw_colored_polygon(PackedVector2Array([pickup + bob + Vector2(0,-10), pickup + bob + Vector2(6,0), pickup + bob + Vector2(0,8), pickup + bob + Vector2(-6,0)]), Color("#63e5e7"))
+    var actors: Array[Dictionary] = []
+    actors.append({"pos": player_pos, "player": true})
     for corpse in corpses:
-        _draw_enemy_sprite(corpse)
+        if area.has_point(corpse["pos"]):
+            actors.append(corpse)
     for enemy in enemies:
-        var pos: Vector2 = enemy["pos"]
-        if not area.has_point(pos):
+        if area.has_point(enemy["pos"]):
+            actors.append(enemy)
+    actors.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["pos"].y < b["pos"].y)
+    for actor in actors:
+        if actor.get("player", false):
+            _draw_player_actor()
+        elif actor.get("dead", false):
+            _draw_enemy_sprite(actor)
+        else:
+            _draw_living_enemy(actor)
+    for enemy in enemies:
+        if not area.has_point(enemy["pos"]):
             continue
-        var kind: String = enemy["kind"]
-        var color := Color("#bbd4c4")
-        if kind == "goblin":
-            color = Color("#a8ba52")
-        elif kind == "wolf":
-            color = Color("#9c8571")
-        draw_circle(pos + Vector2(4, 7), 19.0, Color(0.0, 0.0, 0.0, 0.24))
-        if not _draw_enemy_sprite(enemy):
-            draw_circle(pos, float(ENEMY_TYPES[kind]["radius"]), color)
-            draw_circle(pos + Vector2(0, -5), 4.0, Color("#252922"))
-    if not _draw_druid():
-        draw_circle(player_pos + Vector2(4, 12), 24.0, Color(0, 0, 0, 0.28))
-        var cloak := PackedVector2Array([player_pos + Vector2(-18, -14), player_pos + Vector2(18, -14), player_pos + Vector2(25, 24), player_pos + Vector2(-25, 24)])
-        draw_colored_polygon(cloak, Color("#344e36"))
-        var tunic := PackedVector2Array([player_pos + Vector2(-15, -13), player_pos + Vector2(15, -13), player_pos + Vector2(9, 4), player_pos + Vector2(20, 18), player_pos + Vector2(-20, 18), player_pos + Vector2(-9, 4)])
-        draw_colored_polygon(tunic, Color("#65814c"))
-        draw_circle(player_pos + Vector2(-11, -17), 12.0, Color("#865239"))
-        draw_circle(player_pos + Vector2(11, -17), 12.0, Color("#865239"))
-        draw_circle(player_pos + Vector2(0, -17), 14.0, Color("#b87d51"))
-        draw_circle(player_pos + Vector2(0, -14), 10.0, Color("#edc4a5"))
+        var ratio := clampf(float(enemy["hp"]) / float(ENEMY_TYPES[enemy["kind"]]["hp"]), 0.0, 1.0)
+        if ratio < 1.0:
+            var bar: Vector2 = enemy["pos"] - Vector2(19, 83)
+            draw_rect(Rect2(bar, Vector2(38, 5)), Color("#302422"))
+            draw_rect(Rect2(bar, Vector2(38 * ratio, 5)), Color("#e26b50"))
+    for effect in impacts:
+        var t := float(effect["age"]) / float(effect["duration"])
+        var p: Vector2 = effect["pos"]
+        for k in range(8):
+            var d := Vector2.RIGHT.rotated(k * TAU / 8.0)
+            draw_line(p + d * 8, p + d * (12 + 30 * t), Color(1, 0.65, 0.2, 1-t), 3)
+    for popup in damage_popups:
+        var t := float(popup["age"]) / float(popup["duration"])
+        var p: Vector2 = popup["pos"] - Vector2(12, 60 + 38 * t)
+        draw_string(ThemeDB.fallback_font, p, str(roundi(float(popup["amount"]))), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 0.9, 0.65, 1-t))
     if cast_timer > 0.0:
         var hand := _casting_origin(aim_direction)
         draw_circle(hand, 12.0 + 4.0 * sin(elapsed * 30.0), Color("#ffb32b", 0.60))
@@ -612,3 +650,28 @@ func _draw() -> void:
         var base := touch_origin + camera.get_screen_center_position() - get_viewport_rect().size / 2.0
         draw_circle(base, TOUCH_RADIUS, Color(1, 1, 1, 0.15))
         draw_circle(base + touch_vector * TOUCH_RADIUS, 35.0, Color(1, 1, 1, 0.4))
+
+func _draw_player_actor() -> void:
+    if not _draw_druid():
+        draw_circle(player_pos + Vector2(4, 12), 24.0, Color(0, 0, 0, 0.28))
+        var cloak := PackedVector2Array([player_pos + Vector2(-18, -14), player_pos + Vector2(18, -14), player_pos + Vector2(25, 24), player_pos + Vector2(-25, 24)])
+        draw_colored_polygon(cloak, Color("#344e36"))
+        var tunic := PackedVector2Array([player_pos + Vector2(-15, -13), player_pos + Vector2(15, -13), player_pos + Vector2(9, 4), player_pos + Vector2(20, 18), player_pos + Vector2(-20, 18), player_pos + Vector2(-9, 4)])
+        draw_colored_polygon(tunic, Color("#65814c"))
+        draw_circle(player_pos + Vector2(-11, -17), 12.0, Color("#865239"))
+        draw_circle(player_pos + Vector2(11, -17), 12.0, Color("#865239"))
+        draw_circle(player_pos + Vector2(0, -17), 14.0, Color("#b87d51"))
+        draw_circle(player_pos + Vector2(0, -14), 10.0, Color("#edc4a5"))
+
+func _draw_living_enemy(enemy: Dictionary) -> void:
+    var pos: Vector2 = enemy["pos"]
+    var kind: String = enemy["kind"]
+    var color := Color("#bbd4c4")
+    if kind == "goblin":
+        color = Color("#a8ba52")
+    elif kind == "wolf":
+        color = Color("#9c8571")
+    draw_circle(pos + Vector2(4, 7), 19.0, Color(0.0, 0.0, 0.0, 0.24))
+    if not _draw_enemy_sprite(enemy):
+        draw_circle(pos, float(ENEMY_TYPES[kind]["radius"]), color)
+        draw_circle(pos + Vector2(0, -5), 4.0, Color("#252922"))
