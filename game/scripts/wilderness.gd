@@ -420,18 +420,32 @@ func _update_enemies(delta: float) -> void:
 
 func _separate_enemies() -> void:
     for pass_index in range(3):
+        var buckets: Dictionary = {}
+        for i in range(enemies.size()):
+            var p: Vector2 = enemies[i]["pos"]
+            var cell := Vector2i(floori(p.x / 48.0), floori(p.y / 48.0))
+            if not buckets.has(cell):
+                buckets[cell] = []
+            buckets[cell].append(i)
         for i in range(enemies.size()):
             var a: Dictionary = enemies[i]
-            for j in range(i + 1, enemies.size()):
-                var b: Dictionary = enemies[j]
-                var offset: Vector2 = b["pos"] - a["pos"]
-                var distance := offset.length()
-                var spacing := float(ENEMY_TYPES[a["kind"]]["radius"]) + float(ENEMY_TYPES[b["kind"]]["radius"])
-                if distance < spacing:
-                    var axis := offset / distance if distance > 0.001 else Vector2.RIGHT.rotated(float(i + j))
-                    var push := axis * (spacing - distance) * 0.5
-                    a["pos"] = (a["pos"] - push).clamp(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS)
-                    b["pos"] = (b["pos"] + push).clamp(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS)
+            var p: Vector2 = a["pos"]
+            var cell := Vector2i(floori(p.x / 48.0), floori(p.y / 48.0))
+            for x in range(-1, 2):
+                for y in range(-1, 2):
+                    for j in buckets.get(cell + Vector2i(x,y), []):
+                        if j <= i:
+                            continue
+                        var b: Dictionary = enemies[j]
+                        var offset: Vector2 = b["pos"] - a["pos"]
+                        var spacing := float(ENEMY_TYPES[a["kind"]]["radius"]) + float(ENEMY_TYPES[b["kind"]]["radius"])
+                        if offset.length_squared() >= spacing * spacing:
+                            continue
+                        var distance := offset.length()
+                        var axis := offset / distance if distance > 0.001 else Vector2.RIGHT.rotated(float(i + j))
+                        var push := axis * (spacing - distance) * 0.5
+                        a["pos"] = (a["pos"] - push).clamp(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS)
+                        b["pos"] = (b["pos"] + push).clamp(Vector2.ONE * -WORLD_RADIUS, Vector2.ONE * WORLD_RADIUS)
 
 func _update_feedback(delta: float) -> void:
     for collection in [damage_popups, impacts]:
