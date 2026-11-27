@@ -172,7 +172,7 @@ func _draw_druid() -> bool:
         return false
     var texture: Texture2D = druid_frames[key]
     var size := Vector2(100, 137)
-    draw_texture_rect(texture, Rect2(player_pos - Vector2(size.x / 2.0, size.y * 0.76), size), false)
+    draw_texture_rect(texture, Rect2(player_pos - Vector2(size.x / 2.0, size.y * 0.90), size), false)
     return true
 
 func _create_result_popup() -> void:

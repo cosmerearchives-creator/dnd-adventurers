@@ -39,13 +39,24 @@ jobs:
           mkdir -p "$HOME/.local/share/godot/export_templates/4.3.stable"
           unzip -q /tmp/templates.tpz -d /tmp/godot-templates
           cp /tmp/godot-templates/templates/* "$HOME/.local/share/godot/export_templates/4.3.stable/"
-      - name: Render Blender woodland druid
+      - name: Install Blender and GLB rendering prerequisites
         run: |
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y blender python3-numpy libegl1 libgl1 libopengl0 libx11-6
-          blender -b -t 2 --python-exit-code 1 --python game/tools/render_druid.py
+      - name: Verify high-resolution pre-rendered player frames
+        run: |
+          set -euo pipefail
           test "$(find game/assets/druid -name '*.png' | wc -l)" -eq 96
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          folder=Path('game/assets/druid')
+          for facing in range(8):
+              for action,count in [('idle',1),('walk',8),('cast',2),('hit',1)]:
+                  for frame in range(count):
+                      file=folder/f'{action}_{facing}_{frame}.png'
+                      assert file.is_file(),file
+          PYCODE
       - name: Render Blender wilderness enemies
         run: |
           set -euo pipefail
@@ -85,22 +96,22 @@ jobs:
           mkdir -p release-assets
           cp app/build/outputs/apk/release/app-release.apk release-assets/dnd-adventurers.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose release-assets/dnd-adventurers.apk
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-assets/dnd-adventurers.apk | grep "versionCode='19'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-assets/dnd-adventurers.apk | grep "versionCode='20'"
           sha256sum release-assets/dnd-adventurers.apk
           python3 - <<'PY'
           import hashlib,json,pathlib
           apk=pathlib.Path('release-assets/dnd-adventurers.apk')
-          pathlib.Path('release-assets/update.json').write_text(json.dumps({'versionCode':19,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest()}))
+          pathlib.Path('release-assets/update.json').write_text(json.dumps({'versionCode':20,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest()}))
           PY
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v0.3.12 >/dev/null 2>&1; then
-            gh release upload v0.3.12 release-assets/dnd-adventurers.apk release-assets/update.json --clobber
+          if gh release view v0.3.13 >/dev/null 2>&1; then
+            gh release upload v0.3.13 release-assets/dnd-adventurers.apk release-assets/update.json --clobber
           else
-            gh release create v0.3.12 release-assets/dnd-adventurers.apk release-assets/update.json --title "DnD Adventurers 0.3.12" --notes "Imported firebolt artwork baked into a lightweight directional sprite."
+            gh release create v0.3.13 release-assets/dnd-adventurers.apk release-assets/update.json --title "DnD Adventurers 0.3.13" --notes "New textured female character baked at 320x448 with directional walk and casting frames, preserving the firebolt upgrade."
           fi
       - name: Verify updater download URLs
         run: |
@@ -112,6 +123,6 @@ jobs:
           python3 - <<'PY'
           import hashlib,json,pathlib
           meta=json.loads(pathlib.Path('/tmp/update.json').read_text())
-          assert meta['versionCode']==19
+          assert meta['versionCode']==20
           assert hashlib.sha256(pathlib.Path('/tmp/dnd-adventurers.apk').read_bytes()).hexdigest()==meta['sha256']
           PY
